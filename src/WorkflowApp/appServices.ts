@@ -67,7 +67,7 @@ class AppServices {
             }
         };
     
-        const ticketContent: Ticket = input;
+        const ticketContent: Ticket = input.tickets;
     
         console.log("Début de la tâche de service");
         console.log("ID de l'élément BPMN :", item.elementId);
