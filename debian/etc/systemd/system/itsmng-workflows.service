@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
+EnvironmentFile=/etc/itsmng-workflows/configuration
 ExecStart=/usr/share/itsmng-workflows/node_modules/.bin/ts-node src/scripts/setup.ts && /usr/share/itsmng-workflows/node_modules/.bin/ts-node src/app.ts
 Restart=always
 User=itsmworkflow

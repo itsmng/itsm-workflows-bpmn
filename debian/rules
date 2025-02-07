@@ -9,21 +9,24 @@ URL = https://github.com/itsmng/$(NAME)/releases/download/v$(VERSION)/$(TARBALL)
 %:
 	dh $@
 
-override_dh_auto_build:
-	# Download and extract the source
-	wget $(URL)
-	tar xvf $(TARBALL)
-
 override_dh_auto_install:
-	# Remove unused files
-	rm 	$(NAME)/CHANGELOG.md \
-		$(NAME)/Dockerfile* \
-		$(NAME)/docker-compose.yml
+
+	# Install node modules
+	npm install
 
 	# ITSM-NG Source code
 	# Install files into the appropriate directories
 	mkdir -p usr/share/itsmng-workflows
-	cp -r $(NAME)/* usr/share/itsmng-workflows
-	rm -r usr/share/itsmng-workflows/etc
+	find . -mindepth 1 -maxdepth 1 ! -name 'usr' -exec cp -r {} usr/share/itsmng-workflows \;	
+	cp usr/share/itsmng-workflows/example.env usr/share/itsmng-workflows/.env
+
+	mkdir -pv etc/itsmng-workflows
+	cp -r debian/etc/* etc/
+
+	# Clean packages
+	rm -r 	usr/share/itsmng-workflows/debian 		\
+		usr/share/itsmng-workflows/Dockerfile		\
+		usr/share/itsmng-workflows/Dockerfile.dev
+
 override_dh_gencontrol:
 	dh_gencontrol -- -v$(VERSION)
