@@ -1,6 +1,3 @@
-
-
-
 import * as readline from 'readline';
 import { log } from '../test/helpers/BPMNTester';
 import axios from 'axios';
@@ -13,7 +10,7 @@ const question = function (q) {
         })
     });
 };
-async function delay(time, result) {
+async function delay(time, result?) {
     console.log("delaying ... " + time)
     return new Promise(function (resolve) {
         setTimeout(function () {
@@ -23,28 +20,21 @@ async function delay(time, result) {
     });
 }
 
-// var seq = 0;
 class AppServices {
     appDelegate;
+    server;
     constructor(delegate) {
         this.appDelegate = delegate;
+        this.server = delegate.server;
+        this.pollWorkflowStatus = this.pollWorkflowStatus.bind(this);
     }
+    
     async echo(input, context) {
         console.log('service echo - input', input);
-        context.item.data['echo']=input;
+        context.item.data['echo'] = input;
         return input;
     }
-    /**
-        * Sample Code for Leave Application 
-    * to demonstrate how to access DB and return results into scripts
-    * This is called as such:
-        *  	assignee	#(appServices.getSupervisorUser(this.data.requester))
-    * 
-        * @param userName
-    * @param context 
-    * @returns 
-    */
-
+    
     async createTicket(input, context) {
         let item = context.item;
     
@@ -117,29 +107,75 @@ class AppServices {
     
         console.log("Fin de la tâche de service");
     }
-    
 
-    
-    // async service1(input, context) {
-    //     let item = context.item;
-    //     let wait=5000;
-    //     if (input.wait)
-    //         wait=input.wait;
-    //     item.vars = input;
-    //     // seq++;
-    //     await delay(wait, 'test');
-    //     item.token.log("SERVICE 1: input: " + JSON.stringify(input)+ item.token.currentNode.id + " current seq: " + seq);
-
-    //     console.log('appDelegate service1 is now complete input:',input, 'output:',seq,'item.data',item.data);
-    //     return { seq , text: 'test' };
-    // }
-
-    // async DummyService1(input, context) {
-    //     context.item.data.service1Result = 'Service1Exec';
-    // }
-
+    async pollWorkflowStatus(input, context, maxRetries = 10, interval = 5000) {
+        try {
+            console.log("Input:", input);
+            console.log("Context.item.id:", context?.item?.id);
+            
+            const server = context?.appDelegate?.server || this.appDelegate?.server;
+            if (!server) {
+                console.error("Erreur: Impossible d'accéder au serveur BPMN.");
+                return null;
+            }
+            
+            const itemId = context?.item?.id;
+            const processName = context?.item?.element?.process?.name || context?.item?.token?.processId;
+            
+            console.log(`Démarrage du polling pour le processus: ${processName}`);
+            
+            let attempt = 0;
+            while (attempt < maxRetries) {
+                try {
+                    console.log(`Tentative ${attempt+1}/${maxRetries}`);
+                    
+                    let instances = [];
+                    try {
+                        const query = { "name": processName, "status": "running" };
+                        console.log("Recherche d'instances en cours avec:", JSON.stringify(query));
+                        instances = await server.engine.get(query);
+                    } catch (err) {
+                        console.error("Erreur lors de la recherche d'instances en cours:", err.message);
+                    }
+                    
+                    if (instances && instances.length > 0) {
+                        console.log(`${instances.length} instances en cours trouvées`);
+                    } else {
+                        try {
+                            const completedQuery = { "name": processName, "status": "end" };
+                            console.log("Recherche d'instances terminées avec:", JSON.stringify(completedQuery));
+                            const completedInstances = await server.engine.get(completedQuery);
+                            
+                            if (completedInstances && completedInstances.length > 0) {
+                                console.log("Processus terminé trouvé.");
+                                return completedInstances[0];
+                            } else {
+                                console.log("Aucune instance terminée trouvée.");
+                            }
+                        } catch (err) {
+                            console.error("Erreur lors de la recherche d'instances terminées:", err.message);
+                        }
+                    }
+                    
+                    console.log("Attente avant la prochaine tentative...");
+                    await delay(interval);
+                    attempt++;
+                } catch (error) {
+                    console.error(`Erreur lors du polling: ${error.message}`);
+                    attempt++;
+                    await delay(interval);
+                }
+            }
+            
+            console.log(`Le polling a atteint le nombre maximal de tentatives (${maxRetries}).`);
+            return null;
+        } catch (error) {
+            console.error("Erreur globale dans la fonction pollWorkflowStatus:", error.message);
+            return null;
+        }
+    }
     async raiseBPMNError(input, context) {
         return({bpmnError:' Something went wrong'});
     }
 }
-export {AppServices}
+export { AppServices }
