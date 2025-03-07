@@ -26,7 +26,6 @@ class AppServices {
     constructor(delegate) {
         this.appDelegate = delegate;
         this.server = delegate.server;
-        this.pollWorkflowStatus = this.pollWorkflowStatus.bind(this);
     }
     
     async echo(input, context) {
@@ -94,88 +93,114 @@ class AppServices {
                 const ticketResponse = await axios.post(ticketApiUrl, payload, { headers });
     
                 if (ticketResponse.status === 201) {
-                    console.log("Asset créé avec succès :", ticketResponse.data);
+                    const createdTicketId = ticketResponse.data.id;
+                    console.log("ID du ticket créé :", createdTicketId);
+                    
+                    context.item.data.ticketId = createdTicketId;
+                    
+                    return {
+                        ticketId: createdTicketId
+                    };
                 } else {
                     console.log("Problème lors de la création :", ticketResponse.status, ticketResponse.data);
+                    return {
+                        error: "Échec de création de ticket"
+                    };
                 }
             } else {
                 console.error("Impossible de récupérer le session token :", sessionResponse.data);
+                return {
+                    error: "Échec de récupération du token de session"
+                };
             }
         } catch (error) {
             console.error("Erreur lors de la communication avec l'API :", error.message);
+            return {
+                error: "Erreur de communication avec l'API"
+            };
+        } finally {
+            console.log("Fin de la tâche de service");
         }
+    }
     
-        console.log("Fin de la tâche de service");
+    async pollTicketValidation(input, context) {
+        const ticketId = context.item.data.ticketId;
+        
+        if (!ticketId) {
+            console.error("Aucun ID de ticket trouvé dans le contexte");
+            return { error: "ID de ticket manquant" };
+        }
+
+        const ticketApiUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}?expand_dropdowns=true`;
+        const appToken = process.env.ITSM_APP_TOKEN;
+    
+        try {
+            const sessionResponse = await axios.get(`${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/initSession`, {
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "user_token " + process.env.ITSM_USER_TOKEN,
+                    "App-Token": appToken,
+                },
+            });
+    
+            if (sessionResponse.status !== 200 || !sessionResponse.data.session_token) {
+                console.error("Impossible de récupérer le session token :", sessionResponse.data);
+                return { error: "Échec de récupération du token de session" };
+            }
+    
+            const sessionToken = sessionResponse.data.session_token;
+            const headers = {
+                "Content-Type": "application/json",
+                "Session-Token": sessionToken,
+                "App-Token": appToken,
+            };
+    
+            let attempts = 0;
+            const interval = 5000;
+            const maxAttempts = 20;
+    
+            while (attempts < maxAttempts) {
+                try {
+                    const ticketResponse = await axios.get(ticketApiUrl, { headers });
+    
+                    if (ticketResponse.status === 200 && ticketResponse.data) {
+                        const ticket = ticketResponse.data;
+                        
+                        if (ticket.id && ticket.id == ticketId) {
+                            const validationStatus = ticket.global_validation;
+                            console.log(`Tentative ${attempts + 1}: Ticket ${ticketId}, Validation = ${validationStatus}`);
+    
+                            if (validationStatus === 3) {
+                                console.log("Ticket validé !");
+                                return { validated: true };
+                            } else if (validationStatus === 4) {
+                                console.log("Ticket refusé !");
+                                return { validated: false };
+                            }
+                        } else {
+                            console.error("le ticket retourné ne correspond pas à l'ID attendu.");
+                        }
+                    } else {
+                        console.log("Erreur lors de la récupération du ticket :", ticketResponse.status);
+                    }
+                } catch (responseError) {
+                    console.error("Erreur lors de la requête :", responseError.message);
+                }
+    
+                attempts++;
+                if (attempts < maxAttempts) await new Promise(resolve => setTimeout(resolve, interval));
+            }
+    
+            console.log("Temps écoulé, la validation du ticket est toujours en attente.");
+            return { validated: false };
+        } catch (error) {
+            console.error("Erreur lors du polling :", error.message);
+            return { error: "Erreur lors du polling" };
+        }
     }
 
-    async pollWorkflowStatus(input, context, maxRetries = 10, interval = 5000) {
-        try {
-            console.log("Input:", input);
-            console.log("Context.item.id:", context?.item?.id);
-            
-            const server = context?.appDelegate?.server || this.appDelegate?.server;
-            if (!server) {
-                console.error("Erreur: Impossible d'accéder au serveur BPMN.");
-                return null;
-            }
-            
-            const itemId = context?.item?.id;
-            const processName = context?.item?.element?.process?.name || context?.item?.token?.processId;
-            
-            console.log(`Démarrage du polling pour le processus: ${processName}`);
-            
-            let attempt = 0;
-            while (attempt < maxRetries) {
-                try {
-                    console.log(`Tentative ${attempt+1}/${maxRetries}`);
-                    
-                    let instances = [];
-                    try {
-                        const query = { "name": processName, "status": "running" };
-                        console.log("Recherche d'instances en cours avec:", JSON.stringify(query));
-                        instances = await server.engine.get(query);
-                    } catch (err) {
-                        console.error("Erreur lors de la recherche d'instances en cours:", err.message);
-                    }
-                    
-                    if (instances && instances.length > 0) {
-                        console.log(`${instances.length} instances en cours trouvées`);
-                    } else {
-                        try {
-                            const completedQuery = { "name": processName, "status": "end" };
-                            console.log("Recherche d'instances terminées avec:", JSON.stringify(completedQuery));
-                            const completedInstances = await server.engine.get(completedQuery);
-                            
-                            if (completedInstances && completedInstances.length > 0) {
-                                console.log("Processus terminé trouvé.");
-                                return completedInstances[0];
-                            } else {
-                                console.log("Aucune instance terminée trouvée.");
-                            }
-                        } catch (err) {
-                            console.error("Erreur lors de la recherche d'instances terminées:", err.message);
-                        }
-                    }
-                    
-                    console.log("Attente avant la prochaine tentative...");
-                    await delay(interval);
-                    attempt++;
-                } catch (error) {
-                    console.error(`Erreur lors du polling: ${error.message}`);
-                    attempt++;
-                    await delay(interval);
-                }
-            }
-            
-            console.log(`Le polling a atteint le nombre maximal de tentatives (${maxRetries}).`);
-            return null;
-        } catch (error) {
-            console.error("Erreur globale dans la fonction pollWorkflowStatus:", error.message);
-            return null;
-        }
-    }
     async raiseBPMNError(input, context) {
-        return({bpmnError:' Something went wrong'});
+        return { bpmnError: ' Something went wrong' };
     }
 }
 export { AppServices }
