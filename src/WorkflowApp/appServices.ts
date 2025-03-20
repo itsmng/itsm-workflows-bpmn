@@ -130,7 +130,7 @@ class AppServices {
             console.error("Aucun ID de ticket trouvé dans le contexte");
             return { error: "ID de ticket manquant" };
         }
-
+    
         const ticketApiUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}?expand_dropdowns=true`;
         const appToken = process.env.ITSM_APP_TOKEN;
     
@@ -172,13 +172,15 @@ class AppServices {
     
                             if (validationStatus === 3) {
                                 console.log("Ticket validé !");
+                                context.item.data.ticketValidated = true;
                                 return { validated: true };
                             } else if (validationStatus === 4) {
                                 console.log("Ticket refusé !");
+                                context.item.data.ticketValidated = false;
                                 return { validated: false };
                             }
                         } else {
-                            console.error("le ticket retourné ne correspond pas à l'ID attendu.");
+                            console.error("Le ticket retourné ne correspond pas à l'ID attendu.");
                         }
                     } else {
                         console.log("Erreur lors de la récupération du ticket :", ticketResponse.status);
@@ -192,11 +194,17 @@ class AppServices {
             }
     
             console.log("Temps écoulé, la validation du ticket est toujours en attente.");
+            context.item.data.ticketValidated = false;
             return { validated: false };
         } catch (error) {
             console.error("Erreur lors du polling :", error.message);
+            context.item.data.ticketValidated = false;
             return { error: "Erreur lors du polling" };
         }
+    }
+
+    async addFollowUp(input, context) {
+        return { followUp: ' Something went wrong' };
     }
 
     async raiseBPMNError(input, context) {
