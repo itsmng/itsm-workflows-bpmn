@@ -29,8 +29,8 @@ class AppServices {
     }
     
     async echo(input, context) {
-        console.log('service echo - input', input);
         context.item.data['echo'] = input;
+        console.log(context.item.data);
         return input;
     }
     
