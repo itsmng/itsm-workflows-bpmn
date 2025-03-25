@@ -42,15 +42,15 @@ class AppServices {
             title: string,
             description: string,
             requester: {
-                users: number[]
+                users_id_recipient: number[]
                 groups: number[]
             },
             watchers: {
-                users: number[]
+                users_id_recipient: number[]
                 groups: number[]
             },
             assignee: {
-                users: number[]
+                users_id_recipient: number[]
                 groups: number[]
                 suppliers: number[]
             }
