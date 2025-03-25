@@ -157,7 +157,7 @@ class AppServices {
     
             let attempts = 0;
             const interval = 5000;
-            const maxAttempts = 20;
+            const maxAttempts = 7200;
     
             while (attempts < maxAttempts) {
                 try {
