@@ -27,7 +27,6 @@ jobs:
 
       - name: Build Debian package
         run: |
-          cd itsm-workflows-bpmn
           dpkg-buildpackage -us -uc -b
 
       - name: Upload Debian package
