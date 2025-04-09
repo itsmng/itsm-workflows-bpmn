@@ -34,7 +34,6 @@ jobs:
             ghcr.io/itsmng/itsm-workflows-bpmn:latest
           build-args: |
             VERSION=${{ github.ref_name }}
-          context: latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
