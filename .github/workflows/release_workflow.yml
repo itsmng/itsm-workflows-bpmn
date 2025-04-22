@@ -33,16 +33,24 @@ jobs:
           tar -czvf itsm-workflows-bpmn-${TAG}.tgz itsm-workflows-bpmn
           mv itsm-workflows-bpmn-${TAG}.tgz /tmp
 
-      - name: Upload release
-        uses: actions/upload-artifact@v4
-        with:
-          name: itsm-workflows-bpmn-${{ github.ref_name }}.tgz
-          path: /tmp/itsm-workflows-bpmn-${{ github.ref_name }}.tgz
+      - name: Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential dpkg-dev debhelper
+
+      - name: Build Debian package
+        run: |
+          sed -i 's/^VERSION *= *[0-9.]\+/VERSION = ${TAG}/' debian/rules
+          dpkg-buildpackage -us -uc -b
+          mv ../itsmng-workflows_${TAG}_all.deb /tmp
+
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: /tmp/itsm-workflows-bpmn-${{ github.ref_name }}.tgz
+          files: |
+            /tmp/itsm-workflows-bpmn-${{ github.ref_name }}.tgz
+            /tmp/itsmng-workflows_${{ github.ref_name }}_all.deb
           body: "New release is available"
           name: ITSM-NG ${{ github.ref_name }}
           draft: true
