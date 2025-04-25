@@ -297,7 +297,6 @@ class AppServices {
         console.log("ID du ticket :", ticketId);
         
         const initSessionUrl = process.env.ITSM_HOST + process.env.ITSM_URI + "/apirest.php/initSession";
-        // Utiliser directement l'endpoint ITILFollowup au lieu du sous-endpoint du ticket
         const followupUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/ITILFollowup/`;
         const appToken = process.env.ITSM_APP_TOKEN;
         
@@ -401,13 +400,12 @@ class AppServices {
         console.log("ID du ticket :", ticketId);
         
         const initSessionUrl = process.env.ITSM_HOST + process.env.ITSM_URI + "/apirest.php/initSession";
-        // Utiliser directement l'endpoint ITILTask au lieu du sous-endpoint du ticket
-        const taskUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/ITILTask/`;
+        const taskUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/TicketTask/`;
         const appToken = process.env.ITSM_APP_TOKEN;
         
         let taskContent = "";
-        if (input.task && input.task.content) {
-            taskContent = input.task.content;
+        if (input.taskData && input.taskData.content) {
+            taskContent = input.taskData.content;
         } else {
             taskContent = "Tâche ajoutée automatiquement par le workflow";
         }
@@ -445,16 +443,16 @@ class AppServices {
                 
                 const taskPayload = {
                     input: {
-                        itemtype: "Ticket",
-                        items_id: ticketId,
+                        tickets_id: ticketId,
                         content: taskContent,
                         is_private: 0,
-                        requesttypes_id: 1
+                        users_id_tech: 2,
+                        state: 1
                     }
                 };
                 
-                if (input.task && input.task.is_private !== undefined) {
-                    taskPayload.input.is_private = input.task.is_private ? 1 : 0;
+                if (input.taskData && input.taskData.is_private !== undefined) {
+                    taskPayload.input.is_private = input.taskData.is_private ? 1 : 0;
                 }
                 
                 console.log("Ajout de la tâche avec payload:", JSON.stringify(taskPayload));
