@@ -33,6 +33,7 @@ class AppServices {
         console.log(context.item.data);
         return input;
     }
+        
     
     async createTicket(input, context) {
         let item = context.item;
@@ -87,7 +88,8 @@ class AppServices {
                         content: ticketContent.description,
                         users_id_assign: ticketContent.users_id_assign || null,
                         _users_id_assign: ticketContent.users_id_assign || null,
-                        _users_id_requester: process.env.ITSM_USER_ID || null,
+                        _users_id_requester: ticketContent.users_id_requester || null,
+                        users_id_requester: ticketContent.users_id_requester || null,
                         status: 1,
                         entities_id: 0
                     },
@@ -209,10 +211,12 @@ class AppServices {
         
         if (!ticketId) {
             console.error("Aucun ID de ticket trouvé dans le contexte");
-            return { error: "ID de ticket manquant" };
+            context.item.data.ticketValidated = false;
+            return { error: "ID de ticket manquant", validated: false };
         }
     
         const ticketApiUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}?expand_dropdowns=true`;
+        const ticketValidationsUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/TicketValidation`;
         const appToken = process.env.ITSM_APP_TOKEN;
     
         try {
@@ -226,7 +230,8 @@ class AppServices {
     
             if (sessionResponse.status !== 200 || !sessionResponse.data.session_token) {
                 console.error("Impossible de récupérer le session token :", sessionResponse.data);
-                return { error: "Échec de récupération du token de session" };
+                context.item.data.ticketValidated = false;
+                return { error: "Échec de récupération du token de session", validated: false };
             }
     
             const sessionToken = sessionResponse.data.session_token;
@@ -236,27 +241,97 @@ class AppServices {
                 "App-Token": appToken,
             };
     
+            // Activer le profil superadmin
+            try {
+                console.log("Changement vers le profil superadmin...");
+                const changeProfileUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/changeActiveProfile/`;
+                await axios.post(changeProfileUrl, { profiles_id: 4 }, { headers });
+                console.log("Changement de profil réussi");
+            } catch (profileError) {
+                console.error("Erreur lors du changement de profil:", profileError.message);
+            }
+    
             let attempts = 0;
             const interval = 5000;
-            const maxAttempts = 7200;
+            const maxAttempts = 30; // Réduire le nombre de tentatives pour éviter les longues boucles
+    
+            // Suivre les validations déjà vues pour ne pas traiter 2 fois le même refus
+            if (!context.item.data.seenValidations) {
+                context.item.data.seenValidations = [];
+            }
     
             while (attempts < maxAttempts) {
                 try {
+                    // Obtenir le ticket complet
                     const ticketResponse = await axios.get(ticketApiUrl, { headers });
-    
+                    
+                    // Obtenir les validations individuelles
+                    const validationsResponse = await axios.get(ticketValidationsUrl, { headers });
+                    
                     if (ticketResponse.status === 200 && ticketResponse.data) {
                         const ticket = ticketResponse.data;
                         
                         if (ticket.id && ticket.id == ticketId) {
-                            const validationStatus = ticket.global_validation;
-                            console.log(`Tentative ${attempts + 1}: Ticket ${ticketId}, Validation = ${validationStatus}`);
-    
-                            if (validationStatus === 3) {
-                                console.log("Ticket validé !");
+                            const globalValidationStatus = ticket.global_validation;
+                            console.log(`Tentative ${attempts + 1}: Ticket ${ticketId}, Validation globale = ${globalValidationStatus}`);
+                            console.log(`Status de validation global: ${globalValidationStatus} (3=validé, 4=refusé, 2=en attente)`);
+                            
+                            // Vérifier s'il y a des validations individuelles refusées
+                            let hasNewRejection = false;
+                            let rejectionUserName = "";
+                            
+                            if (validationsResponse.status === 200 && Array.isArray(validationsResponse.data)) {
+                                console.log("Validations individuelles :", JSON.stringify(validationsResponse.data));
+                                
+                                for (const validation of validationsResponse.data) {
+                                    // Vérifier si cette validation a déjà été traitée
+                                    const alreadySeen = context.item.data.seenValidations.includes(validation.id);
+                                    
+                                    if (validation.status === 4 && !alreadySeen) { // 4 = Refusé
+                                        console.log(`Détection d'une validation individuelle refusée par l'utilisateur ${validation.users_id_validate}`);
+                                        hasNewRejection = true;
+                                        rejectionUserName = validation.users_id_validate;
+                                        
+                                        // Marquer cette validation comme traitée
+                                        context.item.data.seenValidations.push(validation.id);
+                                        
+                                        // Stocke l'information sur le refus
+                                        context.item.data.rejectedBy = validation.users_id_validate;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            if (hasNewRejection) {
+                                console.log("Ticket refusé par au moins un validateur !");
+                                context.item.data.ticketValidated = false;
+                                
+                                // Incrémenter le compteur de refus
+                                if (!context.item.data.rejectionCount) {
+                                    context.item.data.rejectionCount = 1;
+                                } else {
+                                    context.item.data.rejectionCount++;
+                                }
+                                
+                                // Vérifier si on a atteint le maximum de rejets autorisés
+                                const maxRejections = 3;
+                                if (context.item.data.rejectionCount >= maxRejections) {
+                                    console.log(`Maximum de rejets (${maxRejections}) atteint. Forcer la sortie du workflow.`);
+                                    context.item.data.forceExit = true;
+                                }
+                                
+                                return { 
+                                    validated: false, 
+                                    rejectedBy: rejectionUserName,
+                                    rejectionCount: context.item.data.rejectionCount,
+                                    forceExit: context.item.data.forceExit
+                                };
+                            } else if (globalValidationStatus === 3) {
+                                console.log("Ticket validé globalement !");
                                 context.item.data.ticketValidated = true;
                                 return { validated: true };
-                            } else if (validationStatus === 4) {
-                                console.log("Ticket refusé !");
+                            } else if (globalValidationStatus === 4) {
+                                console.log("Ticket refusé globalement !");
                                 context.item.data.ticketValidated = false;
                                 return { validated: false };
                             }
@@ -276,11 +351,11 @@ class AppServices {
     
             console.log("Temps écoulé, la validation du ticket est toujours en attente.");
             context.item.data.ticketValidated = false;
-            return { validated: false };
+            return { validated: false, timeout: true };
         } catch (error) {
             console.error("Erreur lors du polling :", error.message);
             context.item.data.ticketValidated = false;
-            return { error: "Erreur lors du polling" };
+            return { error: "Erreur lors du polling", validated: false };
         }
     }
 
@@ -490,6 +565,193 @@ class AppServices {
         }
     }
 
+    async updateTicket(input, context) {
+        try {
+            const ticketId = input.ticketUpdate.id;
+            const appToken = process.env.ITSM_APP_TOKEN;
+            
+            // Obtenir un jeton de session
+            console.log("Obtention d'un jeton de session...");
+            const sessionResponse = await axios.get(`${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/initSession`, {
+                headers: {
+                    "Content-Type": "application/json", 
+                    "Authorization": "user_token " + process.env.ITSM_USER_TOKEN,
+                    "App-Token": appToken,
+                },
+            });
+            
+            if (sessionResponse.status !== 200 || !sessionResponse.data.session_token) {
+                console.error("Impossible de récupérer le session token :", sessionResponse.data);
+                return { error: "Échec de récupération du token de session" };
+            }
+            
+            const sessionToken = sessionResponse.data.session_token;
+            const headers = {
+                "Content-Type": "application/json",
+                "Session-Token": sessionToken,
+                "App-Token": appToken,
+            };
+    
+            // Activer le profil superadmin
+            try {
+                console.log("Changement vers le profil superadmin...");
+                const changeProfileUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/changeActiveProfile/`;
+                await axios.post(changeProfileUrl, { profiles_id: 4 }, { headers });
+                console.log("Changement de profil réussi");
+            } catch (profileError) {
+                console.error("Erreur lors du changement de profil:", profileError.message);
+            }
+            
+            // Récupérer les assignations existantes pour ce ticket
+            console.log("Récupération des assignations existantes...");
+            const ticketUsersUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/Ticket_User`;
+            const existingAssignments = await axios.get(ticketUsersUrl, { headers });
+            
+            // Stocker l'ID de l'utilisateur actuel
+            const currentUserId = input.ticketUpdate.users_id_assign;
+            
+            // Parcourir les assignations existantes
+            if (existingAssignments.data && Array.isArray(existingAssignments.data)) {
+                console.log("Assignations existantes :", JSON.stringify(existingAssignments.data));
+                
+                // Filtrer pour trouver les assignations de type 2 (assigné) qui ne sont pas l'utilisateur actuel
+                const assignmentsToConvert = existingAssignments.data.filter(assignment => 
+                    assignment.type === 2 && assignment.users_id != currentUserId
+                );
+                
+                // Pour chaque ancien assigné, changer son type à 3 (observateur)
+                for (const assignment of assignmentsToConvert) {
+                    console.log(`Traitement de l'utilisateur ${assignment.users_id} (actuellement assigné)...`);
+                    
+                    // Modifier directement l'assignation existante pour changer son type
+                    try {
+                        console.log(`Modification de l'assignation (ID: ${assignment.id}) pour l'utilisateur ${assignment.users_id}...`);
+                        
+                        // URL pour la mise à jour de l'assignation
+                        const updateUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/${assignment.id}`;
+                        
+                        // Payload pour la mise à jour (changer le type à 3 = observateur)
+                        const updatePayload = {
+                            input: {
+                                id: assignment.id,
+                                type: 3 // Changer en observateur
+                            }
+                        };
+                        
+                        // Effectuer la mise à jour avec PUT
+                        await axios.put(updateUrl, updatePayload, { headers });
+                        console.log(`Assignation modifiée avec succès pour l'utilisateur ${assignment.users_id}`);
+                    } catch (updateError) {
+                        console.error(`Erreur lors de la modification de l'assignation pour l'utilisateur ${assignment.users_id}:`, updateError.message);
+                    }
+                }
+            }
+            
+            // Assigner le nouvel utilisateur
+            if (input.ticketUpdate.users_id_assign) {
+                // Vérifier si l'utilisateur est déjà assigné
+                const isAlreadyAssigned = existingAssignments.data && Array.isArray(existingAssignments.data) ? 
+                    existingAssignments.data.some(a => a.users_id == input.ticketUpdate.users_id_assign && a.type === 2) : false;
+                
+                if (!isAlreadyAssigned) {
+                    console.log(`Ajout de l'utilisateur ${input.ticketUpdate.users_id_assign} comme assigné...`);
+                    const assignPayload = {
+                        input: {
+                            tickets_id: ticketId,
+                            users_id: input.ticketUpdate.users_id_assign,
+                            type: 2 // Type 2 = assigné
+                        }
+                    };
+                    
+                    const assignUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/`;
+                    try {
+                        await axios.post(assignUrl, assignPayload, { headers });
+                        console.log(`Utilisateur ${input.ticketUpdate.users_id_assign} assigné avec succès`);
+                    } catch (assignError) {
+                        console.error(`Erreur lors de l'assignation de l'utilisateur ${input.ticketUpdate.users_id_assign}:`, assignError.message);
+                    }
+                } else {
+                    console.log(`L'utilisateur ${input.ticketUpdate.users_id_assign} est déjà assigné`);
+                }
+            }
+            
+            // Ajouter l'observateur si nécessaire
+            if (input.ticketUpdate.users_id_observer) {
+                // Vérifier si l'observateur existe déjà pour éviter les doublons
+                const existingObservers = existingAssignments.data && Array.isArray(existingAssignments.data) ? 
+                    existingAssignments.data.filter(a => a.users_id == input.ticketUpdate.users_id_observer && a.type === 3) : [];
+                
+                if (existingObservers.length === 0) {
+                    console.log(`Ajout de l'utilisateur ${input.ticketUpdate.users_id_observer} comme observateur...`);
+                    const observerPayload = {
+                        input: {
+                            tickets_id: ticketId,
+                            users_id: input.ticketUpdate.users_id_observer,
+                            type: 3 // Type 3 = observateur
+                        }
+                    };
+                    
+                    const observerUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/`;
+                    try {
+                        await axios.post(observerUrl, observerPayload, { headers });
+                        console.log(`Utilisateur ${input.ticketUpdate.users_id_observer} ajouté comme observateur avec succès`);
+                    } catch (observerError) {
+                        console.error(`Erreur lors de l'ajout de l'utilisateur ${input.ticketUpdate.users_id_observer} comme observateur:`, observerError.message);
+                    }
+                } else {
+                    console.log(`L'utilisateur ${input.ticketUpdate.users_id_observer} est déjà observateur (${existingObservers.length} fois)`);
+                }
+            }
+            
+            if (input.ticketValidation) {
+                try {
+                    console.log("Ajout d'une validation de ticket...");
+                    const validationUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/TicketValidation/`;
+                    
+                    const validationPayload = {
+                        ...input.ticketValidation,
+                        input: {
+                            ...input.ticketValidation.input,
+                            tickets_id: ticketId
+                        }
+                    };
+                    
+                    await axios.post(validationUrl, validationPayload, { headers });
+                    console.log(`Validation ajoutée pour l'utilisateur ${validationPayload.input.users_id_validate}`);
+                } catch (validationError) {
+                    console.error("Erreur lors de l'ajout de la validation:", validationError.message);
+                }
+            }
+            
+            try {
+                console.log("Ajout d'un suivi pour la réassignation...");
+                
+                const followupUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/TicketFollowup/`;
+                await axios.post(followupUrl, {
+                    input: {
+                        content: `Ticket traité dans le cadre du workflow de fiche de départ`,
+                        is_private: 0,
+                        requesttypes_id: 1
+                    }
+                }, { headers });
+                
+                console.log("Suivi ajouté avec succès");
+            } catch (followupError) {
+                console.error("Erreur lors de l'ajout du suivi:", followupError.message);
+            }
+            
+            console.log("Fin de la tâche de mise à jour du ticket");
+            
+            if (context && context.item && context.item.data) {
+                context.item.data.ticketId = ticketId;
+            }
+            
+            return { ticketId };
+        } catch (error) {
+            console.error("Erreur lors de la mise à jour du ticket :", error.message);
+            return { error: "Échec de la mise à jour du ticket" };
+        }
+    }
     async raiseBPMNError(input, context) {
         return { bpmnError: ' Something went wrong' };
     }
