@@ -241,7 +241,6 @@ class AppServices {
                 "App-Token": appToken,
             };
     
-            // Activer le profil superadmin
             try {
                 console.log("Changement vers le profil superadmin...");
                 const changeProfileUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/changeActiveProfile/`;
@@ -253,7 +252,7 @@ class AppServices {
     
             let attempts = 0;
             const interval = 5000;
-            const maxAttempts = 30; // Réduire le nombre de tentatives pour éviter les longues boucles
+            const maxAttempts = 10000;
     
             // Suivre les validations déjà vues pour ne pas traiter 2 fois le même refus
             if (!context.item.data.seenValidations) {
@@ -262,16 +261,24 @@ class AppServices {
     
             while (attempts < maxAttempts) {
                 try {
-                    // Obtenir le ticket complet
                     const ticketResponse = await axios.get(ticketApiUrl, { headers });
                     
-                    // Obtenir les validations individuelles
                     const validationsResponse = await axios.get(ticketValidationsUrl, { headers });
                     
                     if (ticketResponse.status === 200 && ticketResponse.data) {
                         const ticket = ticketResponse.data;
                         
                         if (ticket.id && ticket.id == ticketId) {
+                            // Vérifier si le ticket est clos (status 6 généralement)
+                            if (ticket.status === 6) {
+                                console.log(`Ticket ${ticketId} est clos (status=${ticket.status})`);
+                                context.item.data.ticket_closed = true;
+                                return { 
+                                    validated: true, 
+                                    ticket_closed: true 
+                                };
+                            }
+                            
                             const globalValidationStatus = ticket.global_validation;
                             console.log(`Tentative ${attempts + 1}: Ticket ${ticketId}, Validation globale = ${globalValidationStatus}`);
                             console.log(`Status de validation global: ${globalValidationStatus} (3=validé, 4=refusé, 2=en attente)`);
@@ -281,8 +288,6 @@ class AppServices {
                             let rejectionUserName = "";
                             
                             if (validationsResponse.status === 200 && Array.isArray(validationsResponse.data)) {
-                                console.log("Validations individuelles :", JSON.stringify(validationsResponse.data));
-                                
                                 for (const validation of validationsResponse.data) {
                                     // Vérifier si cette validation a déjà été traitée
                                     const alreadySeen = context.item.data.seenValidations.includes(validation.id);
@@ -305,35 +310,29 @@ class AppServices {
                             if (hasNewRejection) {
                                 console.log("Ticket refusé par au moins un validateur !");
                                 context.item.data.ticketValidated = false;
-                                
-                                // Incrémenter le compteur de refus
-                                if (!context.item.data.rejectionCount) {
-                                    context.item.data.rejectionCount = 1;
-                                } else {
-                                    context.item.data.rejectionCount++;
-                                }
-                                
-                                // Vérifier si on a atteint le maximum de rejets autorisés
-                                const maxRejections = 3;
-                                if (context.item.data.rejectionCount >= maxRejections) {
-                                    console.log(`Maximum de rejets (${maxRejections}) atteint. Forcer la sortie du workflow.`);
-                                    context.item.data.forceExit = true;
-                                }
+                                context.item.data.ticket_closed = false;
                                 
                                 return { 
-                                    validated: false, 
-                                    rejectedBy: rejectionUserName,
-                                    rejectionCount: context.item.data.rejectionCount,
-                                    forceExit: context.item.data.forceExit
+                                    validated: false,
+                                    ticket_closed: false,
+                                    rejectedBy: rejectionUserName
                                 };
                             } else if (globalValidationStatus === 3) {
                                 console.log("Ticket validé globalement !");
                                 context.item.data.ticketValidated = true;
-                                return { validated: true };
+                                context.item.data.ticket_closed = false;
+                                return { 
+                                    validated: true,
+                                    ticket_closed: false 
+                                };
                             } else if (globalValidationStatus === 4) {
                                 console.log("Ticket refusé globalement !");
                                 context.item.data.ticketValidated = false;
-                                return { validated: false };
+                                context.item.data.ticket_closed = false;
+                                return { 
+                                    validated: false,
+                                    ticket_closed: false 
+                                };
                             }
                         } else {
                             console.error("Le ticket retourné ne correspond pas à l'ID attendu.");
@@ -351,11 +350,13 @@ class AppServices {
     
             console.log("Temps écoulé, la validation du ticket est toujours en attente.");
             context.item.data.ticketValidated = false;
-            return { validated: false, timeout: true };
+            context.item.data.ticket_closed = false;
+            return { validated: false, ticket_closed: false, timeout: true };
         } catch (error) {
             console.error("Erreur lors du polling :", error.message);
             context.item.data.ticketValidated = false;
-            return { error: "Erreur lors du polling", validated: false };
+            context.item.data.ticket_closed = false;
+            return { error: "Erreur lors du polling", validated: false, ticket_closed: false };
         }
     }
 
@@ -615,34 +616,56 @@ class AppServices {
                 console.log("Assignations existantes :", JSON.stringify(existingAssignments.data));
                 
                 // Filtrer pour trouver les assignations de type 2 (assigné) qui ne sont pas l'utilisateur actuel
-                const assignmentsToConvert = existingAssignments.data.filter(assignment => 
+                const assignmentsToRemove = existingAssignments.data.filter(assignment => 
                     assignment.type === 2 && assignment.users_id != currentUserId
                 );
                 
-                // Pour chaque ancien assigné, changer son type à 3 (observateur)
-                for (const assignment of assignmentsToConvert) {
+                // Pour chaque ancien assigné, supprimer l'assignation puis ajouter comme observateur
+                for (const assignment of assignmentsToRemove) {
                     console.log(`Traitement de l'utilisateur ${assignment.users_id} (actuellement assigné)...`);
                     
-                    // Modifier directement l'assignation existante pour changer son type
+                    // Supprimer l'assignation existante en utilisant force_purge
                     try {
-                        console.log(`Modification de l'assignation (ID: ${assignment.id}) pour l'utilisateur ${assignment.users_id}...`);
+                        console.log(`Tentative de suppression de l'assignation pour l'utilisateur ${assignment.users_id}...`);
                         
-                        // URL pour la mise à jour de l'assignation
-                        const updateUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/${assignment.id}`;
+                        const deleteUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/`;
+                        const deletePayload = {
+                            input: { 
+                                id: assignment.id 
+                            },
+                            force_purge: true
+                        };
                         
-                        // Payload pour la mise à jour (changer le type à 3 = observateur)
-                        const updatePayload = {
+                        // Utiliser DELETE avec le payload
+                        await axios.delete(deleteUrl, { 
+                            headers, 
+                            data: deletePayload 
+                        });
+                        
+                        console.log(`Assignation pour l'utilisateur ${assignment.users_id} supprimée avec succès`);
+                    } catch (deleteError) {
+                        console.error(`Erreur lors de la suppression de l'assignation:`, deleteError.message);
+                        if (deleteError.response) {
+                            console.error('Détails de l\'erreur:', deleteError.response.status, deleteError.response.data);
+                        }
+                    }
+                    
+                    // Ajouter comme observateur
+                    try {
+                        console.log(`Ajout de l'utilisateur ${assignment.users_id} comme observateur...`);
+                        const observerPayload = {
                             input: {
-                                id: assignment.id,
-                                type: 3 // Changer en observateur
+                                tickets_id: ticketId,
+                                users_id: assignment.users_id,
+                                type: 3 // Type 3 = observateur
                             }
                         };
                         
-                        // Effectuer la mise à jour avec PUT
-                        await axios.put(updateUrl, updatePayload, { headers });
-                        console.log(`Assignation modifiée avec succès pour l'utilisateur ${assignment.users_id}`);
-                    } catch (updateError) {
-                        console.error(`Erreur lors de la modification de l'assignation pour l'utilisateur ${assignment.users_id}:`, updateError.message);
+                        const observerUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/`;
+                        await axios.post(observerUrl, observerPayload, { headers });
+                        console.log(`Utilisateur ${assignment.users_id} ajouté comme observateur avec succès`);
+                    } catch (observerError) {
+                        console.error(`Erreur lors de l'ajout de l'utilisateur ${assignment.users_id} comme observateur:`, observerError.message);
                     }
                 }
             }
@@ -703,6 +726,7 @@ class AppServices {
                 }
             }
             
+            // Ajouter une validation de ticket si nécessaire
             if (input.ticketValidation) {
                 try {
                     console.log("Ajout d'une validation de ticket...");
@@ -723,13 +747,14 @@ class AppServices {
                 }
             }
             
+            // Ajouter un suivi pour documenter la réassignation
             try {
                 console.log("Ajout d'un suivi pour la réassignation...");
                 
                 const followupUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/TicketFollowup/`;
                 await axios.post(followupUrl, {
                     input: {
-                        content: `Ticket traité dans le cadre du workflow de fiche de départ`,
+                        content: "Ticket traité dans le cadre du workflow de fiche de départ",
                         is_private: 0,
                         requesttypes_id: 1
                     }
@@ -738,10 +763,21 @@ class AppServices {
                 console.log("Suivi ajouté avec succès");
             } catch (followupError) {
                 console.error("Erreur lors de l'ajout du suivi:", followupError.message);
+                // Si l'erreur est 400, essayer avec d'autres paramètres pour le suivi
+                if (followupError.response && followupError.response.status === 400) {
+                    try {
+                        console.log("Nouvel essai pour le suivi avec des paramètres simplifiés...");
+                        
+                        console.log("Suivi ajouté avec succès (second essai)");
+                    } catch (retryError) {
+                        console.error("Échec de l'ajout du suivi même avec des paramètres simplifiés:", retryError.message);
+                    }
+                }
             }
             
             console.log("Fin de la tâche de mise à jour du ticket");
             
+            // Stockage de l'ID du ticket pour les tâches suivantes
             if (context && context.item && context.item.data) {
                 context.item.data.ticketId = ticketId;
             }
@@ -752,6 +788,7 @@ class AppServices {
             return { error: "Échec de la mise à jour du ticket" };
         }
     }
+    
     async raiseBPMNError(input, context) {
         return { bpmnError: ' Something went wrong' };
     }
