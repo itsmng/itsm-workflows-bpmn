@@ -16,6 +16,10 @@ A backend execution engine for the ITSM-NG workflow plugin
     apt install ./itsmng-workflows_*_all.deb
     ```
 * Edit the configuration in ***/etc/itsmng-workflows/configuration***
+* Launch the database installation:
+```bash
+cd /usr/share/itsmng-workflows && node /usr/share/itsmng-workflows/node_modules/.bin/ts-node src/scripts/setup.ts
+```
 * Restart BPMN server (systemctl restart itsmng-workflows.service)
 
 ### Installation from source
