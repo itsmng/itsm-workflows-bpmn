@@ -1,6 +1,9 @@
 .buttonsTable tr {
     margin: 5px;
 }
+.decor-token {
+    display:none;
+}
 
 .Completed > .djs-visual > rect, .Completed > .djs-visual > circle, .Completed > .djs-visual > polygon {
     stroke: green !important;

@@ -1,10 +1,11 @@
 import { configuration }  from './';
-import { BPMNServer, Logger, Process, SubProcess, TOKEN_TYPE } from '..';
+import { BPMNServer,BPMNAPI,SecureUser, Logger, Process, SubProcess, TOKEN_TYPE } from '..';
 
 
 const logger = new Logger({ toConsole: false });
-const server = new BPMNServer(configuration, logger, { cron: false }); 
-
+const server:BPMNServer = new BPMNServer(configuration, logger, { cron: false }); 
+const api:BPMNAPI = new BPMNAPI(server);
+const user:SecureUser = new SecureUser({userName:'user1',userGroups:['Employee']});
 const listener = server.listener;
 
 
@@ -15,7 +16,7 @@ const listener = server.listener;
     */
 listener.on('all', async function ({ context, event, }) {
     if (context.item)
-        console.log(`----->Event: '${event}' for ${context.item.element.type} '${context.item.element.id}' id: ${context.item.id}`);
+        console.log(`----->Event: '${event}' for ${context.item.element.type} '${context.item.element.id}' id: ${context.item.id} Instance: ${context.instance.id}`);
     else
         console.log('----->All:' + event, context.definition.name);
 
@@ -39,5 +40,28 @@ listener.on('wait', function ({ object, event }) {
 test(server);
 async function test(server)
 {
-    let res = server.engine.start('Buy Used Car', {});
+    console.log('-------------------------------------------------')
+    let res = await api.engine.start('test-wait-invoke', {},user);
+
+    console.log('about to invoke')
+    res=await api.engine.invoke({ "id": res.instance.id, "items.elementId": 'Activity_0z113lq'},{},user,{noWait:true}),
+    console.log(`invoked`,res.item.element.type,res.item.status);
+
+    report(res.instance);
+
+    await new Promise(function (resolve) {
+        setTimeout(function () {
+            console.log(`after wait`);
+
+            report(res.instance);
+                }, 500);
+    });
+
+    console.log("Ready to drive");
+}
+
+function report(instance) {
+    instance.items.forEach(item => {
+        console.log('--item',item.seq,item.elementId,item.type,item.status,item.userName,'assignee:',item.assignee,item.candidateUsers,item.candidateGroups,item.dueDate);
+    });
 }

@@ -34,6 +34,8 @@ function loggedIn(req, res, next) {
     }
 }
 import { Common } from './common';
+import { ViewHelper } from './ViewHelper';
+import { json } from 'body-parser';
 //////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////
@@ -67,7 +69,7 @@ export class API2 extends Common {
             response.json({ errors: errors, status });
         }));       
 
-        router.get('/data/findItems', loggedIn, awaitAppDelegateFactory(async (request, response) => {
+        router.post('/data/findItems', loggedIn, awaitAppDelegateFactory(async (request, response) => {
 
             let query;
             if (request.body.query) {
@@ -111,6 +113,66 @@ export class API2 extends Common {
             }
             response.json({ errors: errors, instances });
         }));
+        router.get('/datastore/find', loggedIn, awaitAppDelegateFactory(async (request, response) => {
+
+            let error, results = null;
+            let {
+                filter = {}, // filter object to match documents.   // e.g. { status: 'running' }
+                projection = { name: 1, status: 1, data: 1, items: { elementId: 1, seq: 1, type: 1, status: 1 } }, // projection object to specify fields to return
+                after,
+                limit = 10,
+                sort = { '_id': -1 } ,// default sort by _id (descending)'},
+                lastItem={},
+                latestItem={},
+                getTotalCount= false
+              } = request.body;
+
+              limit=Number.parseInt(limit); // ensure limit is a number
+            
+            try {
+
+                results = await this.bpmnServer.dataStore.find({ filter, projection, after, limit, sort,lastItem,
+                    latestItem,getTotalCount });
+                
+            }
+            catch (exc) {
+                error = exc.toString();
+                console.log(error);
+                response.error=error;
+            }
+            response.json(results);
+        }));
+        router.get('/data/fieldInfo', loggedIn, awaitAppDelegateFactory(async (request, response) => {
+    
+                let id = request.query.id;
+                let processName = request.query.processName;
+                let elementId = request.query.elementId;
+                let errors;
+                
+                const instances = await api.data.findInstances({ "items.id": id }, self.getUser(request), 'full');
+                const instance = instances[0];
+    
+    
+                let { node, fields } = await ViewHelper.getNodeInfo(bpmnServer,processName, elementId);
+
+                let cache=[];
+                let node2=
+                JSON.stringify(node, (key, value) => {
+                    if (typeof value === 'object' && value !== null) {
+                      // Duplicate reference found, discard key
+                      if (cache.includes(value)) return;
+                  
+                      // Store value in our collection
+                      cache.push(value);
+                    }
+                    return value;
+                  });
+                cache=null;
+
+                let data = ViewHelper.formatData(instance.data);
+    
+                response.json({ errors: [], node: JSON.parse(node2),fields ,data });
+            }));
         router.delete('/data/deleteInstances', loggedIn, awaitAppDelegateFactory(async (request, response) => {
 
             let query;

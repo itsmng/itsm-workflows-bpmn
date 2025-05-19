@@ -16,11 +16,12 @@ div(id="tasks")
 		each item in waiting
 			- var ref1 = "/invokeItem?id="+item.id+"&processName="+item.processName+"&elementId="+item.elementId;
 			- var ref2 = "/assign?id="+item.id+"&processName="+item.processName+"&elementId="+item.elementId;
+			- var caseId=item.instanceData?item.instanceData.caseId:item.data.caseId;
 
 			tr
 				td #{item.name} - #{item.elementId}
 				td #{item.processName} 
-				td #{item.data.caseId}
+				td #{caseId}
 				td #{item.fromNow}
 				td
 					if (user.userName==item.assignee)  || user.isAdmin()

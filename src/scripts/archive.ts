@@ -3,7 +3,6 @@ import { exec } from 'child_process';
 import { SystemUser, USER_ROLE } from "bpmn-server";
 import { configuration} from '../WorkflowApp/configuration';
 import { BPMNServer,BPMNAPI, Logger, Definition ,SecureUser } from "bpmn-server";
-import {Archive_collection } from "bpmn-server";
 import { inherits } from 'util';
 const logger = new Logger({ toConsole: false});
 const server = new BPMNServer(configuration, logger, { cron: false });
@@ -36,6 +35,6 @@ console.log(date);
 
 server.dataStore.archive({endedAt: { $lte: date}});
 let ds=server.dataStore;
-ds.db.remove(ds.dbConfiguration.db,Archive_collection,{endedAt:{$lte:archiveDate}});
+ds.db.remove(ds.dbConfiguration.db,ds.db.dbConfiguration.Archive_collection,{endedAt:{$lte:archiveDate}});
 
 process.exit(0);

@@ -1,6 +1,7 @@
 import * as readline from 'readline';
 import { log } from '../test/helpers/BPMNTester';
 import axios from 'axios';
+import { ApprovalManager } from './ApprovalManager';
 
 const cl = readline.createInterface(process.stdin, process.stdout);
 const question = function (q) {
@@ -32,8 +33,7 @@ class AppServices {
         context.item.data['echo'] = input;
         console.log(context.item.data);
         return input;
-    }
-        
+    }   
     
     async createTicket(input, context) {
         let item = context.item;

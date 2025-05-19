@@ -426,8 +426,8 @@ async function display(req,res, title, logs = [], items = []) {
         else
             item['endFromNow'] = '';
     });
-    let procs=await this.getProcs(bpmnAPI,process);
-    let procsDocs=this.getProcsDocs(procs);
+    let procs=await ViewHelper.getProcs(bpmnAPI,process);
+    let procsDocs=ViewHelper.getProcsDocs(procs);
 
     res.render('wf',
         {
@@ -468,7 +468,7 @@ async function instanceDetails(response,instanceId) {
     
     let vars = ViewHelper.formatData(instance.data);
 
-    let decorations = JSON.stringify(ViewHelper.calculateDecorations(instance.items));
+    let decorations = JSON.stringify(ViewHelper.calculateDecorations(instance.items,instance.tokens));
 
     response.render('InstanceDetails',
         {

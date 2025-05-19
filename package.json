@@ -1,6 +1,6 @@
 {
   "name": "bpmn-web",
-  "version": "2.2.13",
+  "version": "2.3.5",
   "homepage": "https://github.com/bpmnServer/bpmn-server/blob/rel2.0.0/docs/README.md",
   "scripts": {
     "setup": "ts-node src/scripts/setup.ts",
@@ -9,10 +9,13 @@
     "start": "ts-node src/app.ts",
     "clean": "tsc --build --clean",
     "test": "ts-node src/test/setup.ts && ts-mocha -exit --config=src/test/.mocharc.json src/test/feature",
-    "----": "---------------------for Development Scripts Only -------------------------------------",
-    "dev:run": "nodemon -e ts --watch ./ --watch ../bpmn-server --exec \"tsc --build && tsc --build ../bpmn-server && node dist/app.js\"",
-    "dev:example": "nodemon -e ts --watch ./ --watch ../bpmn-server --exec \"tsc --build && tsc --build ../bpmn-server && node dist/examples/EX.js\"",
-    "dev:test": "nodemon -e ts,js --watch ./ --watch ../bpmn-server --exec \"tsc --build && tsc --build ../bpmn-server && ts-mocha -exit --config=src/test/.mocharc.json src/test/feature/restart2.js || exit 1\""
+    "----": "-----------------Node 23 ---for Development Scripts Only -------------------------------------",
+    "dev:run": "nodemon -e ts --watch ./ --watch ../server --exec \"tsc --build && tsc --build ../server && cls && node dist/app.js\"",
+    "dev:example": "nodemon -e ts --watch ./ --watch ../server --exec \"tsc --build && tsc --build ../server && node dist/examples/find.js\"",
+    "dev:stress": "node dist/examples/stress.js\"",
+    "dev:test": "nodemon -e ts,js --watch ./ --watch ../server --exec \"tsc --build && tsc --build ../server && ts-mocha -exit --config=src/test/.mocharc.json src/test/feature/error.js || exit 1\"",
+    "d:kill": "cmd /c kill.cmd",
+    "d:run": "nodemon -e ts --watch ./ --watch ../server --exec  && node --import=tsx src/app.ts\""
   },
   "description": "bpmn-web Demo App",
   "author": {
@@ -23,7 +26,7 @@
     "bcrypt": "^5.0.1",
     "body-parser": "^1.19.0",
     "bpmn-moddle": "^8.1.0",
-    "bpmn-server": "^2.2.13",
+    "bpmn-server": "^2.3.5",
     "camunda-bpmn-moddle": "^4.4.0",
     "chai": "^4.2.0",
     "chalk": "^2.4.2",
@@ -55,6 +58,7 @@
     "nock": "^12.0.3",
     "nodemailer": "^6.9.6",
     "nodemon": "^3.0.2",
+    "nvm": "^0.0.4",
     "open": "^10.1.0",
     "passport": "^0.6.0",
     "passport-local": "^1.0.0",
@@ -80,6 +84,7 @@
     "rimraf": "^5.0.5",
     "ts-mocha": "^10.0.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.19.3",
     "typescript": "^5.0.4"
   },
   "engines": {
