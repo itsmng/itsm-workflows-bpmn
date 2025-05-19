@@ -29,3 +29,20 @@ tr.color-2 { background-color: #f4f4f5;}
 #instances tr:nth-child(even) {
     background-color: #f4f4f5;
   }
+
+  body {
+    font-family: Arial, sans-serif;
+    padding-top: 10px; /* Space for navbar */
+}
+.container {
+    max-width: 900px;
+}
+.table {
+    margin-top: 10px;
+}
+.form-container {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 5px;
+}

@@ -1,12 +1,205 @@
 
-$('document').ready(function () {
+ // Ensure GSAP is loaded
+if (typeof gsap === "undefined") {
+    console.error("GSAP is not loaded. Include GSAP CDN in your HTML.");
+}
 
-    let svg = $('svg');
+
+function animateFlow(flowId,seq) {
+    let group = document.querySelector(`[data-element-id="${flowId}"]`);
+    if (!group) {
+        console.warn(`Flow group not found: ${flowId}`);
+        return gsap.to({}, {}); // Prevent breaking animation
+    }
+    group.classList.add("Completed");
+
+    let path = group.querySelector("path");
+    if (!path) {
+        console.warn(`No <path> found inside group: ${flowId}`);
+        return gsap.to({}, {}); // Prevent breaking animation
+    }
+//    $('#seq_'+seq).show();
+
+    let pathLength = path.getTotalLength();
+    gsap.set(path, { strokeDasharray: pathLength, strokeDashoffset: pathLength, opacity: 1 });
+
+    // **Create Moving Dot ("Head") for Flow Animation**
+    let movingDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    movingDot.setAttribute("r", "5");  // Radius of the dot
+    movingDot.setAttribute("fill", "red");  // Color of the dot
+    movingDot.setAttribute("data-moving-dot", flowId);
+    path.appendChild(movingDot);
+
+    // **Animate Path and Move the "Head"**
+    gsap.to(path, { strokeDashoffset: 0, duration: 1, ease: "power2.out" });
+    gsap.to(movingDot, { 
+        motionPath: { path: path, align: path, alignOrigin: [0.5, 0.5] },
+        duration: 1, 
+        ease: "power2.out",
+        onComplete: () => movingDot.remove() // Remove dot after animation
+    });
+}
+
+function animateFlow2(flowId) {
+    let group = document.querySelector(`[data-element-id="${flowId}"]`);
+    if (!group) {
+        console.warn(`Flow group not found: ${flowId}`);
+        return gsap.to({}, {}); // Prevent breaking animation
+    }
+
+    let path = group.querySelector("path");
+    if (!path) {
+        console.warn(`No <path> found inside group: ${flowId}`);
+        return gsap.to({}, {}); // Prevent breaking animation
+    }
+
+    let pathLength = path.getTotalLength();
+
+    // ✅ Ultimate Fix: Ensure the whole stroke is visible before animation
+    
+/*    gsap.set(path, { 
+        strokeDasharray: 4, //pathLength/10,   // Set full stroke length
+        strokeDashoffset: pathLength,  // Fully hide at start
+        opacity: 1  // Ensure visibility
+    });
+  */  
+
+    return gsap.to(path, { 
+        strokeDasharray: 4, //pathLength/10,   // Set full stroke length
+        strokeDashoffset: 0,  // Reveal the stroke from start to end
+        opacity: 1,  // Ensure visibility
+        duration: 1, 
+        ease: "power2.out"
+    });
+}
+function activateTask(taskId,seq) {
+    let task = document.querySelector(`[data-element-id="${taskId}"]`);
+
+    if (task) {
+        task.classList.add("Pending");
+        $('#seq_'+seq).show();
+
+
+        gsap.to(task, { attr: { fill: "yellow" }, duration: 10 });
+
+        // ✅ Fix: Task expands and then shrinks back to normal
+        gsap.to(task, { 
+            scale: 1.1, 
+            duration: 0.5, 
+            onComplete: () => gsap.to(task, { scale: 1, duration: 0.2 }) 
+        });
+
+   }
+}
+
+function endAnimation(elementId,seq,action) {
+    let element = document.querySelector(`[data-element-id="${elementId}"]`);
+    element.classList.remove("Pending");
+    if (action==='Ended')
+        element.classList.add("Completed");
+    else if (action==='Cancelled')
+        element.classList.add("Cancelled")
+    
+    if (element) {
+        $('#seq_'+seq).show();
+        // ✅ Ending Effect: Shrink, Fade Out, or Change Color
+        let originalFill = element.getAttribute("fill"); // Store original fill color
+        gsap.to(element, {
+            scale: 0.9,
+            fill: "#ccc",
+             opacity: 0.5, duration: 1 ,
+             onComplete: () => 
+                 gsap.to(element, { scale: 1, fill: originalFill, opacity:1, duration: 0.2 }) 
+             
+
+
+        });
+    }
+}
+let tl = gsap.timeline(); // Start paused
+
+
+gsap.registerPlugin(MotionPathPlugin);
+function pauseAnimation() {
+
+    tl.addPause(() => {
+        console.log("Timeline paused — waiting for user...");
+        document.getElementById("continueBtn").style.display = "block";
+      });
+
+}
+function continueAnimation() {
+    tl.play();
+    document.getElementById("continueBtn").style.display = "none";
+}
+
+
+function startAnimation() {
+
+    document.querySelectorAll(`.Pending`).forEach(element => { element.classList.remove("Pending"); });
+    document.querySelectorAll(`.Completed`).forEach(element => { element.classList.remove("Completed"); });
+    document.querySelectorAll(`.Cancelled`).forEach(element => { element.classList.remove("Cancelled"); });
+
+    let flowInfo = getFlowInfo();
+
+    for(let i=0;i<flowInfo.length;i++)
+        {
+            let item=flowInfo[i];
+            if (item.seq)
+                $('#seq_'+(item.seq+1)).hide();
+        }
+
+    
+    for(let i=0;i<flowInfo.length;i++)
+    {
+        let item=flowInfo[i];
+        if (i==0)
+        {
+            $('#seq_'+item.seq).hide();
+            tl.to('[data-element-id="${item.id}"]', { scale: 1.2, duration: 0.5, repeat: 1, yoyo: true });
+        }
+        else if (item.type==='bpmn:SequenceFlow')
+            tl.call(() => animateFlow(item.id,item.seq+1), null, "+=0.5"); // Activate task and wait
+           // tl.add(animateFlow(item.id), "+=0.5"); // Animate flow and wait
+        else 
+            {
+                if (item.action==='Waiting')
+                {
+                    tl.call(() => activateTask(item.id,item.seq+1), null, "+=0.5"); // Activate task and wait
+//                    tl.addPause("waiting");
+}
+                else if (item.action==='Ended' || item.action==='Cancelled')
+                    tl.call(() => endAnimation(item.id,item.seq+1,item.action), null, "+=0.5"); 
+            }
+    }
+   // tl.play();
+
+    return;
+}
+
+// Ensure the SVG is fully loaded before running the animation
+document.addEventListener("DOMContentLoaded", start);
+let svg = $('svg');
+
+ function getFlowInfo() {
+    let info = JSON.parse(document.getElementById('jsonInfo').textContent);
+    let flow=[];
+    info.forEach(item => {
+        try {
+            let fl=JSON.parse(item.message.replaceAll(`'`,`"`));
+            flow.push(fl);
+        }
+        catch(exc) {}
+    });
+    return flow;
+ }
+ function start()
+    {
+    scanSVG()
+
 
     if (!svg.get(0))
         return;
-
-        scanSVG()
 
 
         $(document).click(function (event) {
@@ -14,20 +207,17 @@ $('document').ready(function () {
             if (id)
                 return displayDescription(id);
 
-/*            console.log(event.target);
-            console.log("Clicked" + id );
-            var text = $(event.target).text();
+         }); 
 
-            $('#Details-block').html(id); */
-         });
-});
+    }
 
-        function onItemClick(evt,id)
-        {
-            displayItemDetails(id);
+    function onItemClick(evt,id)
+    {
+        displayItemDetails(id);
 
-        }
-        function scanSVG() {
+    }
+    decorMap = new Map();
+    function scanSVG() {
 
             /**
              *  Modification to SVG 
@@ -44,16 +234,14 @@ $('document').ready(function () {
             ];
              * */
 
-            let map = new Map();
-
             decorations.forEach(decor => {
-                let set = map.get(decor.id);
+                let set = decorMap.get(decor.id);
                 if (set)
                     set.push(decor);
                 else
                     set = [decor];
 
-                map.set(decor.id, set);
+                decorMap.set(decor.id, set);
             });
 
             let svg = $('svg');
@@ -73,7 +261,7 @@ $('document').ready(function () {
 
             //        setElementClick(g);
 
-                    let decorSet = map.get(id);
+                    let decorSet = decorMap.get(id);
                     if (decorSet) {
 
 /*                        $('[data-element-id="' + id + '"]>.djs-visual>rect').css('stroke', cl).css('fill','#d3dfd2');
@@ -86,6 +274,17 @@ $('document').ready(function () {
 
             });
             //scanChidlren(svg,'svg');
+}
+function decorateNode(id) 
+{
+
+    let decorSet = decorMap.get(id);
+    if (decorSet) {
+        
+        let g = $(svg).find('.djs-element[data-element-id=flow1]');
+        setElementDecor(svg, g, decorSet);
+    }
+
 }
 function textDumm() {
     var svgNS = "http://www.w3.org/2000/svg";
@@ -101,7 +300,11 @@ function textDumm() {
 function setElementDecor(svg, g, decorSet) {
 
     let id = g.attr('data-element-id');
+    if (!id)
+        return;
     let jsonInfo=getItemElement(id);
+    if (!jsonInfo)
+        console.log("Element not found: " + id);
     if (jsonInfo.type) {
         let bpmnType = jsonInfo.type.replace('bpmn:', 'bpmn_');
         $(g)[0].classList.add(bpmnType);
@@ -126,29 +329,52 @@ function setElementDecor(svg, g, decorSet) {
             txtEl.setAttributeNS(null, 'class', 'djs-label Completed-Seq');
         else
             txtEl.setAttributeNS(null, 'class', 'djs-label Pending-Seq');
-        txtEl.setAttributeNS(null, 'stroke', decor.color);
-        txtEl.setAttributeNS(null, 'x', x);
-        txtEl.setAttributeNS(null, 'y', -3);
+
+        if (decor.type==='seq')
+        {
+            txtEl.setAttributeNS(null, 'id', 'seq_' + decor.seq);
+            txtEl.setAttributeNS(null, 'fill', decor.color);
+            txtEl.setAttributeNS(null, 'stroke', decor.color);
+            txtEl.setAttributeNS(null, 'x', x);
+            txtEl.setAttributeNS(null, 'y', -3);
 
 
-        let tSpanEl = document.createElementNS(svgNS, "tspan");
-        if (first)
-            tSpanEl.innerHTML = decor.seq;
-        else
-            tSpanEl.innerHTML = ','+decor.seq;
-        //                    tSpanEl.style.fontSize = "20px";
-        tSpanEl.setAttributeNS(null, 'x', x);
-        tSpanEl.setAttributeNS(null, 'y', -3);
-        tSpanEl.setAttributeNS(null, 'fill-opacity', '.2');
-        tSpanEl.setAttributeNS(null, 'fill', "chocolate");
+            let tSpanEl = document.createElementNS(svgNS, "tspan");
+            if (first)
+                tSpanEl.innerHTML = decor.seq;
+            else
+                tSpanEl.innerHTML = ','+decor.seq;
+            //                    tSpanEl.style.fontSize = "20px";
+            tSpanEl.setAttributeNS(null, 'x', x);
+            tSpanEl.setAttributeNS(null, 'y', -3);
+            tSpanEl.setAttributeNS(null, 'fill-opacity', '.2');
+            tSpanEl.setAttributeNS(null, 'fill', "chocolate");
 
 
-        txtEl.appendChild(tSpanEl);
-        el.appendChild(txtEl);
+            txtEl.appendChild(tSpanEl);
+            el.appendChild(txtEl);
+    
+            lastChange = txtEl;
+                x += 20;
+            first = false;
+        }
+        else if (decor.type==='token')
+        {
+            txtEl.setAttributeNS(null, 'stroke', decor.color);
 
-        lastChange = txtEl;
-        x += 20;
-        first = false;
+            let tSpanEl = document.createElementNS(svgNS, "tspan");
+            //                    tSpanEl.style.fontSize = "20px";
+            tSpanEl.innerHTML = decor.token;
+            tSpanEl.setAttributeNS(null, 'x', x-20);
+            tSpanEl.setAttributeNS(null, 'y', -16);
+            tSpanEl.setAttributeNS(null, 'fill-opacity', '.5');
+           // tSpanEl.setAttributeNS(null, 'fill', "chocolate");
+            txtEl.appendChild(tSpanEl);
+            txtEl.classList.add('decor-token');
+            el.appendChild(txtEl);
+    
+            }
+
     });
 
 

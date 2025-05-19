@@ -9,7 +9,16 @@ A backend execution engine for the ITSM-NG workflow plugin
 * NPM >= 6.x
 * MongoDB >= 4.x
 
-### Installation
+### Installation in Debian
+* Download .deb in [release](https://github.com/itsmng/itsm-workflows-bpmn/releases)
+* Install the deb with this command:
+    ```bash
+    apt install ./itsmng-workflows_*_all.deb
+    ```
+* Edit the configuration in ***/etc/itsmng-workflows/configuration***
+* Restart BPMN server (systemctl restart itsmng-workflows.service)
+
+### Installation from source
 Setup .env with your mongodb connection string like so:
 
 ```bash

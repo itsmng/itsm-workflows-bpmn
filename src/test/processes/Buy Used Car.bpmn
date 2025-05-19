@@ -48,14 +48,19 @@
       <bpmn:documentation>A User Task</bpmn:documentation>
       <bpmn:extensionElements>
         <camunda:formData>
-          <camunda:formField id="needsRepairs" label="Repairs Required?" type="boolean" />
-          <camunda:formField id="needsCleaning" label="Cleaning Required?" type="boolean" />
+          <camunda:formField id="needsRepairs" label="Repairs Required?" type="boolean" defaultValue="No" />
+          <camunda:formField id="needsCleaning" label="Cleaning Required?" type="boolean" defaultValue="No" />
         </camunda:formData>
         <camunda:executionListener event="start">
           <camunda:script scriptFormat="JavaScript">var date=new Date();
 date.setDate(date.getDate()+5);
 this.dueDate=date.toISOString();</camunda:script>
         </camunda:executionListener>
+        <camunda:taskListener event="validate">
+          <camunda:script scriptFormat="JavaScript">console.log(data);
+if (data.needsRepairs==="")
+return {error: 'Invalid values'}</camunda:script>
+        </camunda:taskListener>
       </bpmn:extensionElements>
       <bpmn:incoming>flow_start_buy</bpmn:incoming>
       <bpmn:outgoing>flow_buy_gw</bpmn:outgoing>

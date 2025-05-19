@@ -18,7 +18,7 @@ Feature('SubProcess', () => {
         Scenario('All', () => {
 
             Given('Start Process', async () => {
-                response = await server.engine.start(name, { task_subProcess: { clients: ['abc', 'mbc', 'cbc'] } });
+                response = await server.engine.start(name, { caseId:4001, task_subProcess: { clients: ['abc', 'mbc', 'cbc'] } });
             });
             Then('design is waiting:', () => {
                 expect(getItem('Task_design').status).equals('wait');
@@ -60,7 +60,7 @@ Feature('SubProcess', () => {
         Scenario('Cancel', () => {
 
             Given('Start Process', async () => {
-                response = await server.engine.start(name, { task_subProcess: { clients: ['abc', 'mbc', 'cbc'] } });
+                response = await server.engine.start(name, {caseId: 4002, task_subProcess: { clients: ['abc', 'mbc', 'cbc'] } });
             });
             Then('design is waiting:', () => {
                 expect(getItem('Task_design').status).equals('wait');
@@ -88,7 +88,7 @@ Feature('SubProcess', () => {
                 expect(getItem('Event_0eg36vn').status).equals('end');
             });
         
-            and('subprocess has ended :', () => {
+            and('subprocess has cancelled:', () => {
                 expect(getItem('task_subProcess').status).equals('end');
                 expect(getItem('task_subProcess').endedAt).equals(null);
 

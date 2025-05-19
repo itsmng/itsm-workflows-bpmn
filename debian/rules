@@ -1,0 +1,32 @@
+#!/usr/bin/make -f
+
+# Variables
+NAME = itsm-workflows-bpmn
+VERSION = 1.0.0
+TARBALL = $(NAME)-v$(VERSION).tgz
+URL = https://github.com/itsmng/$(NAME)/releases/download/v$(VERSION)/$(TARBALL)
+
+%:
+	dh $@
+
+override_dh_auto_install:
+
+	# Install node modules
+	npm install
+
+	# ITSM-NG Source code
+	# Install files into the appropriate directories
+	mkdir -p usr/share/itsmng-workflows
+	find . -mindepth 1 -maxdepth 1 ! -name 'usr' -exec cp -r {} usr/share/itsmng-workflows \;	
+	cp usr/share/itsmng-workflows/example.env usr/share/itsmng-workflows/.env
+
+	mkdir -pv etc/itsmng-workflows
+	cp -r debian/etc/* etc/
+
+	# Clean packages
+	rm -r 	usr/share/itsmng-workflows/debian 		\
+		usr/share/itsmng-workflows/Dockerfile		\
+		usr/share/itsmng-workflows/Dockerfile.dev
+
+override_dh_gencontrol:
+	dh_gencontrol -- -v$(VERSION)
