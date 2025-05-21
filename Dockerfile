@@ -10,4 +10,4 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["npm", "run", "setup", "&& npm", "run", "start"]
+CMD ["sh", "-c", "npm run setup && npm run start"]
