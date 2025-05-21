@@ -21,9 +21,7 @@ A backend execution engine for the ITSM-NG workflow plugin
 ### Install from Docker
 ```yaml
   mongo:
-   image: mongo
-   ports:
-     - 27017:27017
+   image: docker.io/mongo:latest
     
   bpmn-server:
     image: ghcr.io/itsmng/itsm-workflows-bpmn:latest
