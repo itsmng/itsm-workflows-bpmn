@@ -20,6 +20,7 @@ A backend execution engine for the ITSM-NG workflow plugin
 
 ### Install from Docker
 ```yaml
+services:
   mongo:
    image: docker.io/mongo:latest
     
@@ -34,9 +35,13 @@ A backend execution engine for the ITSM-NG workflow plugin
       ITSM_APP_TOKEN: "yeJVsyTJzoJgCcccccccwVkSM9DVNrp9emr"
       ITSM_USER_TOKEN: "J1073HvGtccccccccccccU0Ci22bZj9Rb83mYPv1"
       MONGO_DB_URL: "mongodb://mongo:27017/bpmn"
+    volumes:
+      - bpmn:/app/processes
     ports:
      - 3000:3000
     restart: always
+volumes:
+  bpmn:
 ```
 
 ### Installation from source
