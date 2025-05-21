@@ -4,7 +4,7 @@ services:
  bpmn-web:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     command: sh -c "
         npm run setup &&
         npm run start"
