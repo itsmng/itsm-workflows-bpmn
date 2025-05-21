@@ -16,11 +16,30 @@ A backend execution engine for the ITSM-NG workflow plugin
     apt install ./itsmng-workflows_*_all.deb
     ```
 * Edit the configuration in ***/etc/itsmng-workflows/configuration***
-* Launch the database installation:
-```bash
-cd /usr/share/itsmng-workflows && node /usr/share/itsmng-workflows/node_modules/.bin/ts-node src/scripts/setup.ts
-```
 * Restart BPMN server (systemctl restart itsmng-workflows.service)
+
+### Install from Docker
+```yaml
+  mongo:
+   image: mongo
+   ports:
+     - 27017:27017
+    
+  bpmn-server:
+    image: ghcr.io/itsmng/itsm-workflows-bpmn:latest
+    container_name: bpmn-server
+    depends_on:
+      - mongo
+    environment:
+      ITSM_HOST: "https://itsm-ng.lan"
+      ITSM_URI: 
+      ITSM_APP_TOKEN: "yeJVsyTJzoJgCcccccccwVkSM9DVNrp9emr"
+      ITSM_USER_TOKEN: "J1073HvGtccccccccccccU0Ci22bZj9Rb83mYPv1"
+      MONGO_DB_URL: "mongodb://mongo:27017/bpmn"
+    ports:
+     - 3000:3000
+    restart: always
+```
 
 ### Installation from source
 Setup .env with your mongodb connection string like so:

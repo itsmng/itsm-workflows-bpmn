@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/itsmng-workflows/configuration
-ExecStart=/usr/share/itsmng-workflows/node_modules/.bin/ts-node src/app.ts
+ExecStart=sh -c "npm run setup && npm run start"
 Restart=always
 User=itsmworkflow
 StandardOutput=journal
