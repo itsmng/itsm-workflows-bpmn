@@ -87,6 +87,7 @@ class AppServices {
                         users_id_requester: ticketContent.users_id_requester || null,
                         status: 1,
                         entities_id: 0,
+                        itilcategories_id: ticketContent.itilcategories_id || null,
                     },
                 };
                 
