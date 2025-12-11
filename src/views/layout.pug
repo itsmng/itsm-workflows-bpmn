@@ -3,17 +3,22 @@ html
 head
 	title= title
 	link(rel='stylesheet', href='/stylesheets/main.css')
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 	<script type='text/javascript' src='/javascripts/jquery.min.js'></script>
 	<script type='text/javascript' src='/javascripts/bootstrap.min.js'></script>
 	<script type='text/javascript' src='/javascripts/jquery-ui.min.js'></script>
 	<script type='text/javascript' src='/javascripts/jquery.isloading.min.js'></script>
 	<script type='text/javascript' src='/javascripts/workflow.js'></script>
-	<script type='text/javascript' src='/javascripts/processEditor.js'></script>
+	<script type='text/javascript' src='/javascripts/processEditor.js'></script>	
 	<script type='text/javascript' src='/javascripts/jsonHelper.js'></script>
-	<script type='text/javascript' src='/javascripts/SVGHelper.js'></script>
 	<script type='text/javascript' src='/javascripts/descriptions.js'></script>
+	<!-- GSAP Library from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/MotionPathPlugin.min.js"></script>
 
+	<script type='text/javascript' src='/javascripts/SVGHelper.js'></script>
 	<link rel='stylesheet' href='/stylesheets/bootstrap.min.css' type='text/css'>
 	<link rel='stylesheet' href='/stylesheets/bootstrap-theme.min.css' type='text/css'>
 	<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css' type='text/css'>
@@ -24,7 +29,6 @@ head
 	<link rel='stylesheet' href='/stylesheets/jquery-ui.theme.css' type='text/css'>
 
 	<link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
- 
 body
 	Header 
 		<nav role="navigation" class="navbar navbar-default">

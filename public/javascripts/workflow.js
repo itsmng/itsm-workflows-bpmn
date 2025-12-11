@@ -2,34 +2,20 @@
 
 jQuery(document).ready(function () {
 
-    if (jQuery('.startDate').length) {
-        let startDate;
-        jQuery('.startDate').each(function (index) {
-            startDate = $(this).html();
-        });
-    
-
         jQuery('.date').each(function (index) {
 
             let val = $(this).html();
             if (val!='')
-                $(this).html(dateDiff(val,startDate));
+                $(this).html(dateDiff(val));
         });
-    }
-
-});
+    });
 
 
-function dateDiff(dateStr,target) {
 
+function dateDiff(dateStr) {
 
-    if (target == '')
-        target = null;
-    var startTime;
-
-    var endDate = new Date(target);
-    var startTime = new Date(dateStr);
-    var seconds = Math.abs(endDate.getTime() - startTime) / 1000;
+    var endDate = new Date(dateStr);
+    var seconds = Math.abs(endDate.getTime() - startDate) / 1000;
 
 
     // get total seconds between the times

@@ -162,6 +162,9 @@ export class Workflow extends Common {
             let id = request.query.id;
             let processName = request.query.processName;
             let elementId = request.query.elementId;
+            let returnTo=request.query.returnTo;
+            
+
 
             const instances = await bpmnAPI.data.findInstances({ "items.id": id }, getSecureUser(request), 'full');
             const instance = instances[0];
@@ -172,7 +175,7 @@ export class Workflow extends Common {
 
             if (fields && fields.length > 0) {
                 response.render('invokeItem', { node,
-                    id, fields, processName, elementId ,instance,vars
+                    id, fields, processName, elementId ,instance,vars ,returnTo
                 });
                 return;
             }
@@ -187,6 +190,7 @@ export class Workflow extends Common {
         }));
         router.post('/invokeItem', awaitAppDelegateFactory(async (request, response) => {
             let id = request.body.itemId;
+            let returnTo=request.body.returnTo;
             let data = {};
             
             Object.entries(request.body).forEach(entry => {
@@ -258,7 +262,7 @@ export class Workflow extends Common {
             });
 
             try {
-                assignment['dueDate'] = ViewHelper.dateInput(assignment['DueDate']);
+                assignment['dueDate'] = ViewHelper.dateInput(assignment['dueDate']);
                 assignment['followUpDate'] = ViewHelper.dateInput(assignment['followUpDate']);
 
                 assignment['candidateUsers'] = assignment['candidateUsers'].split(',');
@@ -273,12 +277,6 @@ export class Workflow extends Common {
                 response.send(exc.toString());
             }
 
-        }));
-
-
-        router.get('/mocha', awaitAppDelegateFactory(async (request, response) => {
-
-            const mocha = require('../node_modules/mocha/bin/mocha');
         }));
 
         router.get('/run/:process', awaitAppDelegateFactory(async (request, response) => {
@@ -320,9 +318,6 @@ export class Workflow extends Common {
         });
 
         router.get('/deleteInstance', deleteInstance);
-        router.get('/shutdown', shutdown);
-        router.get('/restart', restart);
-        router.get('/manage', manage);
         return router;
     }
     async tasks(request, response) {
@@ -377,40 +372,12 @@ async function deleteInstance(req, res) {
     let output = ['Complete ' + instanceId];
     display(req,res, 'Show', output);
 }
-async function shutdown(req, res) {
-
-    let instanceId = req.query.id;
-
-    await bpmnServer.cache.shutdown();
-
-    let output = ['Complete ' + instanceId];
-    display(req,res, 'Show', output);
-}
-async function restart(req, res) {
-
-    let instanceId = req.query.id;
-
-    await bpmnServer.cache.restart();
-
-    let output = ['Complete ' + instanceId];
-    display(req,res, 'Show', output);
-}
 async function getProcs() {
     let list=[];
     let procs=await bpmnServer.definitions.getList();
     procs.forEach(p=>{list.push(p.name);});
     return list;
 }
-async function manage(req, res) {
-    res.render('manageProcesses',
-        {
-            request:req,
-            procs: await getProcs()
-        });
-
-}
-
-
 
 async function displayError(res, error) {
     let msg = '';
@@ -466,10 +433,10 @@ function setForUser(req) {
     }
 }
 
-
 async function display(req,res, title, output, logs = [], items = []) {
 
     let user = getSecureUser(req);
+    
     var instances = await bpmnAPI.data.findInstances({}, user,{sort:{saved:-1}});
     let waiting = await bpmnAPI.data.findItems({ "items.status": 'wait', "items.type": 'bpmn:UserTask' }, getSecureUser(req)); 
 
@@ -523,7 +490,10 @@ async function afterOperation(request,response,result) {
 
     //console.log("isAuthenticated", request.isAuthenticated(), 'user', request.user);
     // let user = getSecureUser(request);
-    if (isAdmin(request))
+    let returnTo=request.body.returnTo;
+    if (returnTo=='home')
+        return display(request,response,'Show',[]);
+    else if (isAdmin(request))
         {
          response.redirect('/instanceDetails?id=' + result.execution.id);
         }
@@ -540,8 +510,10 @@ async function instanceDetails(request,response,instanceId,version) {
 
     let instance = await bpmnServer.dataStore.findInstance({ id: instanceId }, 'Full');
 
-
     let logs = instance.logs;
+    if (!logs)
+        logs = [];
+    
     let svg = null;
     try {
         svg = await definitions.getSVG(instance.name);
@@ -569,7 +541,7 @@ async function instanceDetails(request,response,instanceId,version) {
 
     let vars = ViewHelper.formatData(instance.data);
 
-    let decorations = JSON.stringify(ViewHelper.calculateDecorations(items));
+    let decorations = JSON.stringify(ViewHelper.calculateDecorations(items,instance.tokens));
 
     response.render('InstanceDetails',
         {

@@ -1,3 +1,5 @@
+
+
 const { BPMNServer, DefaultAppDelegate, Logger } = require('./');
 const { configuration } = require('./');
 
@@ -21,14 +23,37 @@ Feature('Loop', () => {
 
         let data = { records: [1, 2, 3] };
         response = await server.engine.start(name, data);
+        console.log('data:',response.instance.data);
         
     });
 
-      and('User Task', async () => {
+      and('script Task', async () => {
           let items = response.instance.items;
+          
           expect(items.filter(i => i.elementId == 'script_task').length).equals(5);
-          expect(items.filter(i => i.elementId == 'service_task').length).equals(5);
+
       });
+      and('servicet Task', async () => {
+        let items = response.instance.items;
+        
+        expect(items.filter(i => i.elementId == 'service_task').length).equals(5);
+    });
+
+    and('Sub_script', async () => {
+        let items = response.instance.items;
+        
+        expect(items.filter(i => i.elementId == 'Sub_script').length).equals(6);
+
+    });
+
+    and('SubProcess', async () => {
+        let items = response.instance.items;
+        
+        expect(items.filter(i => i.elementId == 'SubProcess').length).equals(3);;
+
+    });
+
+
 
       and('write log file to' + name + '.log', async () => {
           let fileName = __dirname + '/../logs/' + name + '.log';
@@ -47,5 +72,11 @@ async function delay(time, result) {
             console.log("delayed is done.");
             resolve(result);
         }, time);
+    });
+}
+
+function report(instance) {
+    instance.items.sort((a,b)=>(a.nodeId>b.nodeId)).forEach(item => {
+        console.log('       --item',item.seq,item.elementId,item.type,item.status,item.userName,'assignee:',item.assignee,item.candidateUsers,item.candidateGroups,item.dueDate);
     });
 }

@@ -8,6 +8,6 @@ Homepage: https://www.itsm-ng.org/
 
 Package: itsmng-workflows
 Architecture: all
-Depends: nodejs
+Depends: npm
 Recommends: redis-server
 Description: Workflow backend for workflow itsm-ng plugin

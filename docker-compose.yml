@@ -4,10 +4,7 @@ services:
  bpmn-web:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    command: sh -c "
-        npm run setup &&
-        npm run start"
+      dockerfile: Dockerfile
     ports:
       - 3000:3000
     depends_on:

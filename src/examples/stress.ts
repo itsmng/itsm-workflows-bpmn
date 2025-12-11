@@ -44,17 +44,20 @@ async function stressLoad(waitCount,caseCount) {
 
     process.exit(0);
 }
+var caseId = 1001;//Math.floor(Math.random() * 10000);
+
+var dueDate=(new Date(Date.now()));
 
 async function car(drive=true) {
 
+    //await delay(1000*60, 'wait 1 min'); 
     let user = new SecureUser({userName:'user1',userGroups:['admin']});
     api.defaultUser= user;
-    var caseId = Math.floor(Math.random() * 10000);
 
     let id;
 
     console.log('start Buy Used Car');
-    let response = await api.engine.start('Buy Used Car', { caseId } );
+    let response = await api.engine.start('Buy Used Car', { caseId:caseId++ } );
 
     id =response.id;
 
@@ -81,7 +84,23 @@ async function car(drive=true) {
         await api.engine.invoke({ "id": id, "items.elementId": 'task_Drive' },{},user);
         console.timeEnd('invoke');
     }
+    else {
+        dueDate.setDate(dueDate.getDate()+1);
+
+        await api.engine.assign({ "id": id, "items.elementId": 'task_Drive' },{},{dueDate},user);
+    }
 
     return id;
 
+}
+
+
+async function delay(time, result) {
+    console.log("delaying ... " + time)
+    return new Promise(function (resolve) {
+        setTimeout(function () {
+            console.log("delayed is done.");
+            resolve(result);
+        }, time);
+    });
 }

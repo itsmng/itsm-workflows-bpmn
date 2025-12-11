@@ -12,11 +12,11 @@ Gateways</bpmn:documentation>
       </bpmn:lane>
       <bpmn:lane id="Lane_0k86xca" name="Driver">
         <bpmn:flowNodeRef>gateway_2</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>task_Drive</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>gateway_1</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>Event_19ebav7</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>StartEvent_158yep3</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>task_Buy</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>task_Drive</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="Lane_1eq1can" name="Cleaner">
         <bpmn:flowNodeRef>task_clean</bpmn:flowNodeRef>
@@ -37,10 +37,6 @@ Gateways</bpmn:documentation>
       <bpmn:incoming>flow_gw1_gw2</bpmn:incoming>
       <bpmn:outgoing>flow_gw2_drive</bpmn:outgoing>
     </bpmn:parallelGateway>
-    <bpmn:userTask id="task_Drive" name="Drive" camunda:candidateUsers="$data.starterUserId" camunda:dueDate="P10D" camunda:followUpDate="P5D">
-      <bpmn:incoming>flow_gw2_drive</bpmn:incoming>
-      <bpmn:outgoing>flow_drive_end</bpmn:outgoing>
-    </bpmn:userTask>
     <bpmn:inclusiveGateway id="gateway_1" default="flow_gw1_gw2">
       <bpmn:incoming>flow_buy_gw</bpmn:incoming>
       <bpmn:outgoing>flow_gw1_repair</bpmn:outgoing>
@@ -94,6 +90,10 @@ this.dueDate=date.toISOString();</camunda:script>
     <bpmn:userTask id="task_repair" name="Repair">
       <bpmn:incoming>flow_gw1_repair</bpmn:incoming>
       <bpmn:outgoing>flow_repair_gw2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="task_Drive" name="Drive" camunda:candidateUsers="$data.starterUserId" camunda:dueDate="$new Date().setDate(new Date(instance.startedAt).getDate()+10)" camunda:followUpDate="$new Date().setDate(new Date(instance.startedAt).getDate()+5)">
+      <bpmn:incoming>flow_gw2_drive</bpmn:incoming>
+      <bpmn:outgoing>flow_drive_end</bpmn:outgoing>
     </bpmn:userTask>
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
@@ -185,9 +185,6 @@ this.dueDate=date.toISOString();</camunda:script>
           <dc:Bounds x="581" y="191" width="90" height="20" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Activity_02ehn3y_di" bpmnElement="task_Drive">
-        <dc:Bounds x="740" y="216" width="100" height="80" />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="InclusiveGateway_0ea77jj_di" bpmnElement="gateway_1">
         <dc:Bounds x="431" y="231" width="50" height="50" />
         <bpmndi:BPMNLabel>
@@ -211,6 +208,9 @@ this.dueDate=date.toISOString();</camunda:script>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0pn5s0l_di" bpmnElement="task_repair">
         <dc:Bounds x="406" y="80" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_02ehn3y_di" bpmnElement="task_Drive">
+        <dc:Bounds x="740" y="216" width="100" height="80" />
       </bpmndi:BPMNShape>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

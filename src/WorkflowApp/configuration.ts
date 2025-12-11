@@ -1,7 +1,8 @@
 
 import { Configuration, ModelsDatastore, ModelsDatastoreDB, DataStore , Logger 
 	, NoCacheManager,CacheManager,
-	ScriptHandler} from './';
+	ScriptHandler
+} from './';
 import { MyAppDelegate } from './appDelegate';
 import { UserService } from '../userAccess/UserService';
 
@@ -20,7 +21,10 @@ var configuration = new Configuration(
 		database: {
 			MongoDB:
 			{
-				db_url: process.env.MONGO_DB_URL  //"mongodb://localhost:27017?retryWrites=true&w=majority",
+				db_url: process.env.MONGO_DB_URL,  //"mongodb://localhost:27017?retryWrites=true&w=majority",
+				Locks_collection: "wf_locks",
+				Instance_collection: "wf_instances",
+				Archive_collection: "wf_archive"
 			}
 		},
 		apiKey: process.env.API_KEY,
@@ -36,7 +40,9 @@ var configuration = new Configuration(
 		},
 		dataStore: function (server) {
 			let ds=new DataStore(server);
-			ds.enableSavePoints=true;
+			ds.enableSavePoints=process.env.SAVE_POINTS=='true';
+			ds.saveLogs=process.env.SAVE_LOGS=='true';
+			ds.saveSource=process.env.SAVE_SOURCE=='true';	// for in-flight changes
 			return ds;
 		},
 		scriptHandler: function(server) {

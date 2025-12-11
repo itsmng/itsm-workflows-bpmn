@@ -33,8 +33,7 @@ class AppServices {
         context.item.data['echo'] = input;
         console.log(context.item.data);
         return input;
-    }
-        
+    }   
     
     async createTicket(input, context) {
         let item = context.item;

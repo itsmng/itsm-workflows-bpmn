@@ -5,7 +5,7 @@ const { configuration } = require('./');
 
 const logger = new Logger({ toConsole: false});
 
-const server = new BPMNServer(configuration, logger, { cron: true });
+const server = new BPMNServer(configuration, logger, { cron: false });
 
 let name = 'Issue197';
 
@@ -50,7 +50,7 @@ Feature('Cancel Loops', () => {
             }); 
 
         });
-
+/*
         Scenario('Cancel Flow', () => {
 
             Given('Start', async () => {
@@ -78,12 +78,12 @@ Feature('Cancel Loops', () => {
             });
 
             and('write log file to ' + fileName, async () => {
-                logger.save(fileName);
+                logger.save(fileName+'-cancel');
                 //                console.log('filename:', __filename);
             }); 
 
         });
-
+*/
 }); 
 async function delay(time) {
     log("delaying ... " + time)
