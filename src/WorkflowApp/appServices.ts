@@ -1,7 +1,7 @@
 import * as readline from 'readline';
 import { log } from '../test/helpers/BPMNTester';
 import axios from 'axios';
-import { ApprovalManager } from './ApprovalManager';
+import { group } from 'console';
 
 const cl = readline.createInterface(process.stdin, process.stdout);
 const question = function (q) {
@@ -83,6 +83,8 @@ class AppServices {
                         content: ticketContent.description,
                         users_id_assign: ticketContent.users_id_assign || null,
                         _users_id_assign: ticketContent.users_id_assign || null,
+                        _groups_id_assign: ticketContent.groups_id_assign || null,
+                        groups_id_assign: ticketContent.groups_id_assign || null,
                         _users_id_requester: ticketContent.users_id_requester || null,
                         users_id_requester: ticketContent.users_id_requester || null,
                         status: 1,
@@ -135,6 +137,7 @@ class AppServices {
                             input: {
                                 tickets_id: createdTicketId,
                                 users_id_validate: context.item.data.ticketValidation.input.users_id_validate,
+                                groups_id_validate: context.item.data.ticketValidation.input.groups_id_validate,
                                 comment_submission: context.item.data.ticketValidation.input.comment_submission,
                                 validation_status: 2
                             }
@@ -511,13 +514,18 @@ class AppServices {
             // Récupérer les assignations existantes
             const ticketUsersUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/Ticket_User`;
             const existingAssignments = await axios.get(ticketUsersUrl, { headers });
-            
-            // Stocker l'ID de l'utilisateur actuel
+
+            // Récupérer les assignations de groupes existantes
+            const ticketGroupsUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/Group_Ticket`;
+            const existingGroupAssignments = await axios.get(ticketGroupsUrl, { headers });
+
+            // Stocker l'ID de l'utilisateur ou groupe actuel
             const currentUserId = input.ticketUpdate.users_id_assign;
-            
-            // Traiter les assignations existantes
+            const currentGroupId = input.ticketUpdate.groups_id_assign;
+
+            // Traiter les assignations utilisateur existantes
             if (existingAssignments.data && Array.isArray(existingAssignments.data)) {
-                const assignmentsToRemove = existingAssignments.data.filter(assignment => 
+                const assignmentsToRemove = existingAssignments.data.filter(assignment =>
                     assignment.type === 2 && assignment.users_id != currentUserId
                 );
                 
@@ -552,10 +560,29 @@ class AppServices {
                     }
                 }
             }
-            
+            if (existingGroupAssignments.data && Array.isArray(existingGroupAssignments.data)) {
+    const groupAssignmentsToRemove = existingGroupAssignments.data.filter(assignment =>
+        assignment.type === 2 && assignment.groups_id != currentGroupId
+    );
+
+    for (const assignment of groupAssignmentsToRemove) {
+        try {
+            const deleteUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Group_Ticket/`;
+            const deletePayload = {
+                input: { id: assignment.id },
+                force_purge: true
+            };
+
+            await axios.delete(deleteUrl, { headers, data: deletePayload });
+        } catch (deleteError) {
+            console.error("Erreur lors de la suppression d'assignation groupe");
+        }
+    }
+}
+
             // Assigner le nouvel utilisateur si nécessaire
             if (currentUserId) {
-                const isAlreadyAssigned = existingAssignments.data && Array.isArray(existingAssignments.data) ? 
+                const isAlreadyAssigned = existingAssignments.data && Array.isArray(existingAssignments.data) ?
                     existingAssignments.data.some(a => a.users_id == currentUserId && a.type === 2) : false;
                 
                 if (!isAlreadyAssigned) {
