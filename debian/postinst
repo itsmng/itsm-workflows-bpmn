@@ -6,7 +6,8 @@ if ! id "itsmworkflow" >/dev/null 2>&1; then
     useradd --system --no-create-home --shell /usr/sbin/nologin itsmworkflow
 fi
 
-chown -R itsmworkflow:itsmworkflow /usr/share/itsmng-workflows/src 
+chown -R itsmworkflow:itsmworkflow /usr/share/itsmng-workflows/src
+chown -R itsmworkflow:itsmworkflow /usr/share/itsmng-workflows/processes
 chmod +x /usr/share/itsmng-workflows/node_modules/.bin/ts-node
 
 systemctl daemon-reload

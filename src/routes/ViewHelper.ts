@@ -62,7 +62,7 @@ export class ViewHelper {
             data[field] = value;
         }
     }
-    static calculateDecorations(items) {
+    static calculateDecorations(items,tokens) {
         let decors = [];
         let seq = 1;
         items.forEach(item => {
@@ -73,8 +73,14 @@ export class ViewHelper {
                 else
                     color = 'black';
             }
-            let decor = { id: item.elementId, color, seq };
+            let decor = {type:'seq', id: item.elementId, color, seq };
+
             decors.push(decor);
+            let tokenDecor=item.tokenId;
+            let token=tokens[item.tokenId];
+            if (token.parentTokenId)
+                tokenDecor+=':'+token.parentTokenId;
+            decors.push({type:'token', id: item.elementId, color:'blue',token: '('+tokenDecor+')' });
             seq++;
         });
         return decors;

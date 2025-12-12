@@ -4,13 +4,13 @@
     <bpmn2:participant id="Participant_0woiase" processRef="Process_1" />
   </bpmn2:collaboration>
   <bpmn2:process id="Process_1" isExecutable="false">
-    <bpmn2:sequenceFlow id="Flow_0h1irvm" sourceRef="StartEvent_1" targetRef="Activity_1kddi0e" />
-    <bpmn2:sequenceFlow id="Flow_1xw39ty" sourceRef="Activity_1kddi0e" targetRef="Event_1gadigp" />
     <bpmn2:startEvent id="StartEvent_1">
       <bpmn2:extensionElements>
         <camunda:executionListener event="start">
           <camunda:script scriptFormat="JavaScript">item.data.list1=['a','b','c'];
 item.data.val1='abc';
+
+ appServices.echo({var1:50,var2:'some text'},this);
 item.data.val2='xyz';
 item.data.val3='value 3';
 item.data.objSample={x:1,y:2,Z:3};
@@ -61,28 +61,30 @@ console.log(item.data);</camunda:script>
     <bpmn2:endEvent id="Event_1gadigp">
       <bpmn2:incoming>Flow_1xw39ty</bpmn2:incoming>
     </bpmn2:endEvent>
+    <bpmn2:sequenceFlow id="Flow_1xw39ty" sourceRef="Activity_1kddi0e" targetRef="Event_1gadigp" />
+    <bpmn2:sequenceFlow id="Flow_0h1irvm" sourceRef="StartEvent_1" targetRef="Activity_1kddi0e" />
   </bpmn2:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_0g3bn9r">
       <bpmndi:BPMNShape id="Participant_0woiase_di" bpmnElement="Participant_0woiase" isHorizontal="true">
-        <dc:Bounds x="112" y="-310" width="428" height="230" />
+        <dc:Bounds x="210" y="-330" width="428" height="230" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_1xw39ty_di" bpmnElement="Flow_1xw39ty">
-        <di:waypoint x="370" y="-200" />
-        <di:waypoint x="402" y="-200" />
+        <di:waypoint x="468" y="-220" />
+        <di:waypoint x="500" y="-220" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_0h1irvm_di" bpmnElement="Flow_0h1irvm">
-        <di:waypoint x="218" y="-200" />
-        <di:waypoint x="270" y="-200" />
+        <di:waypoint x="316" y="-220" />
+        <di:waypoint x="368" y="-220" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
-        <dc:Bounds x="182" y="-218" width="36" height="36" />
+        <dc:Bounds x="280" y="-238" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_0lvwyqx_di" bpmnElement="Activity_1kddi0e">
-        <dc:Bounds x="270" y="-240" width="100" height="80" />
+        <dc:Bounds x="368" y="-260" width="100" height="80" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_1gadigp_di" bpmnElement="Event_1gadigp">
-        <dc:Bounds x="402" y="-218" width="36" height="36" />
+        <dc:Bounds x="500" y="-238" width="36" height="36" />
       </bpmndi:BPMNShape>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>

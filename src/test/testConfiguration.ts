@@ -37,6 +37,8 @@ export const configuration = new Configuration(
 		dataStore: function (server) {
 			let ds=new DataStore(server);
 			ds.enableSavePoints=true;
+//			ds.saveLogs=false;
+//			ds.saveSource=false;
 			return ds;
 		},
 		scriptHandler: function(server) {

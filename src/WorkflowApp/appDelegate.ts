@@ -138,6 +138,9 @@ class MyAppDelegate extends DefaultAppDelegate{
         return emailMsg;
     }
 
+    
+    ///
+    
     /* only for show 
     sendEmailSendGrid(to, msg, body) {
 
