@@ -722,6 +722,88 @@ class AppServices {
         }
     }
     
+    async closeTicket(input, context) {
+        const ticketId = input.ticketId || context.item.data.ticketId;
+
+        if (!ticketId) {
+            return { error: "ID de ticket manquant" };
+        }
+
+        console.log("Début de la tâche de fermeture de ticket");
+
+        const initSessionUrl = process.env.ITSM_HOST + process.env.ITSM_URI + "/apirest.php/initSession";
+        const updateTicketUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}`;
+        const appToken = process.env.ITSM_APP_TOKEN;
+
+        try {
+            const sessionResponse = await axios.get(initSessionUrl, {
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "user_token " + process.env.ITSM_USER_TOKEN,
+                    "App-Token": appToken,
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache"
+                },
+            });
+
+            if (sessionResponse.status === 200 && sessionResponse.data && sessionResponse.data.session_token) {
+                const sessionToken = sessionResponse.data.session_token;
+
+                const headers = {
+                    "Content-Type": "application/json",
+                    "Session-Token": sessionToken,
+                    "App-Token": appToken,
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache"
+                };
+
+                // Passer en profil superadmin
+                const getActiveProfileUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/getActiveProfile/`;
+                const profileResponse = await axios.get(getActiveProfileUrl, { headers });
+
+                if (profileResponse.data.id !== 4) {
+                    const changeProfileUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/changeActiveProfile/`;
+                    await axios.post(changeProfileUrl, { profiles_id: 4 }, { headers });
+                }
+
+                // Clôture du ticket
+                const closedPayload = {
+                    input: {
+                        status: 6
+                    }
+                };
+
+                const ticketResponse = await axios.put(updateTicketUrl, closedPayload, { headers });
+
+                if (ticketResponse.status === 200) {
+                    console.log("Ticket clos avec succès, ID:", ticketId);
+                    context.item.data.ticket_closed = true;
+
+                    return {
+                        success: true,
+                        ticketId: ticketId,
+                        ticket_closed: true
+                    };
+                } else {
+                    return {
+                        error: "Échec de la fermeture du ticket"
+                    };
+                }
+            } else {
+                return {
+                    error: "Échec de récupération du token de session"
+                };
+            }
+        } catch (error) {
+            console.error("Erreur lors de la fermeture du ticket:", error.message);
+            return {
+                error: "Erreur de communication avec l'API: " + error.message
+            };
+        } finally {
+            console.log("Fin de la tâche de fermeture de ticket");
+        }
+    }
+
     async raiseBPMNError(input, context) {
         return { bpmnError: ' Something went wrong' };
     }
