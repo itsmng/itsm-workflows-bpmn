@@ -133,31 +133,80 @@ class AppServices {
                     // Ajout de la validation si nécessaire
                     if (context.item.data.ticketValidation) {
                         const validationUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/TicketValidation/`;
-                        const validationPayload = {
-                            input: {
-                                tickets_id: createdTicketId,
-                                users_id_validate: context.item.data.ticketValidation.input.users_id_validate,
-                                groups_id_validate: context.item.data.ticketValidation.input.groups_id_validate,
-                                comment_submission: context.item.data.ticketValidation.input.comment_submission,
-                                validation_status: 2
-                            }
-                        };
+                        const validationInput = context.item.data.ticketValidation.input;
 
-                        try {
-                            await axios.post(validationUrl, validationPayload, { headers });
-                        } catch (validationError) {
+                        // Si un groupe est assigné au ticket, récupérer tous les membres et créer une validation pour chacun
+                        if (ticketContent.groups_id_assign) {
+                            console.log(`Groupe assigné: ${ticketContent.groups_id_assign}. Récupération des membres...`);
+
+                            // Récupération des membres du groupe via l'API GLPI
+                            let groupMembers = [];
                             try {
-                                const updateUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${createdTicketId}`;
-                                const updatePayload = {
-                                    input: {
-                                        global_validation: 2,
-                                        users_id_validate: context.item.data.ticketValidation.input.users_id_validate
-                                    }
-                                };
+                                const groupUsersUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Group/${ticketContent.groups_id_assign}/Group_User/`;
+                                const groupResponse = await axios.get(groupUsersUrl, { headers });
 
-                                await axios.put(updateUrl, updatePayload, { headers });
-                            } catch (updateError) {
-                                console.error("Erreur lors de la mise à jour du ticket");
+                                if (groupResponse.status === 200 && groupResponse.data) {
+                                    groupMembers = groupResponse.data
+                                        .filter(item => item.users_id)
+                                        .map(item => item.users_id);
+                                    console.log(`Membres du groupe ${ticketContent.groups_id_assign}:`, groupMembers);
+                                }
+                            } catch (groupError) {
+                                console.error(`Erreur lors de la récupération des membres du groupe:`, groupError.message);
+                            }
+
+                            if (groupMembers.length > 0) {
+                                console.log(`Création de ${groupMembers.length} demandes de validation pour les membres du groupe`);
+
+                                // Créer une demande de validation pour chaque membre du groupe
+                                for (const userId of groupMembers) {
+                                    const validationPayload = {
+                                        input: {
+                                            tickets_id: createdTicketId,
+                                            users_id_validate: userId,
+                                            comment_submission: validationInput.comment_submission || "Validation requise par le groupe",
+                                            validation_status: 2
+                                        }
+                                    };
+
+                                    try {
+                                        const validationResponse = await axios.post(validationUrl, validationPayload, { headers });
+                                        console.log(`Validation créée pour l'utilisateur ${userId}, ID: ${validationResponse.data.id}`);
+                                    } catch (validationError) {
+                                        console.error(`Erreur lors de la création de la validation pour l'utilisateur ${userId}:`, validationError.message);
+                                    }
+                                }
+                            } else {
+                                console.log("Aucun membre trouvé dans le groupe, pas de validation créée");
+                            }
+                        } else {
+                            // Comportement classique: validation par utilisateur ou groupe unique
+                            const validationPayload = {
+                                input: {
+                                    tickets_id: createdTicketId,
+                                    users_id_validate: validationInput.users_id_validate,
+                                    groups_id_validate: validationInput.groups_id_validate,
+                                    comment_submission: validationInput.comment_submission,
+                                    validation_status: 2
+                                }
+                            };
+
+                            try {
+                                await axios.post(validationUrl, validationPayload, { headers });
+                            } catch (validationError) {
+                                try {
+                                    const updateUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${createdTicketId}`;
+                                    const updatePayload = {
+                                        input: {
+                                            global_validation: 2,
+                                            users_id_validate: validationInput.users_id_validate
+                                        }
+                                    };
+
+                                    await axios.put(updateUrl, updatePayload, { headers });
+                                } catch (updateError) {
+                                    console.error("Erreur lors de la mise à jour du ticket");
+                                }
                             }
                         }
                     }
@@ -258,9 +307,11 @@ class AppServices {
                             const globalValidationStatus = ticket.global_validation;
                             console.log(`Ticket ${ticketId}, Validation globale = ${globalValidationStatus}`);
 
-                            // Vérifier les validations individuelles refusées
+                            // Vérifier les validations individuelles refusées ou acceptées
                             let hasNewRejection = false;
                             let rejectionUserName = "";
+                            let hasNewApproval = false;
+                            let approvalUserId = null;
 
                             if (validationsResponse.status === 200 && Array.isArray(validationsResponse.data)) {
                                 for (const validation of validationsResponse.data) {
@@ -272,6 +323,13 @@ class AppServices {
                                         context.item.data.seenValidations.push(validation.id);
                                         context.item.data.rejectedBy = validation.users_id_validate;
                                         break;
+                                    } else if (validation.status === 3 && !alreadySeen) { // 3 = Accepté
+                                        hasNewApproval = true;
+                                        approvalUserId = validation.users_id_validate;
+                                        context.item.data.seenValidations.push(validation.id);
+                                        context.item.data.approvedBy = validation.users_id_validate;
+                                        console.log(`Validation acceptée par l'utilisateur ${approvalUserId}`);
+                                        break;
                                     }
                                 }
                             }
@@ -280,6 +338,108 @@ class AppServices {
                                 context.item.data.ticketValidated = false;
                                 context.item.data.ticket_closed = false;
                                 return { validated: false, ticket_closed: false, rejectedBy: rejectionUserName };
+                            } else if (hasNewApproval && approvalUserId) {
+                                // Assigner automatiquement l'utilisateur qui a validé au ticket
+                                console.log(`Assignation automatique du ticket à l'utilisateur ${approvalUserId} qui a validé`);
+
+                                try {
+                                    //  Récupérer les assignations existantes
+                                    const ticketUsersUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/Ticket_User`;
+                                    const existingAssignments = await axios.get(ticketUsersUrl, { headers });
+
+                                    //  Supprimer toutes les assignations de type 2 (assigné) existantes et les mettre en observateurs
+                                    if (existingAssignments.data && Array.isArray(existingAssignments.data)) {
+                                        for (const assignment of existingAssignments.data) {
+                                            if (assignment.type === 2 && assignment.users_id != approvalUserId) {
+                                                // Supprimer l'ancienne assignation
+                                                try {
+                                                    const deleteUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/`;
+                                                    await axios.delete(deleteUrl, {
+                                                        headers,
+                                                        data: { input: { id: assignment.id }, force_purge: true }
+                                                    });
+                                                    console.log(`Ancienne assignation supprimée pour l'utilisateur ${assignment.users_id}`);
+
+                                                    // Ajouter comme observateur
+                                                    const observerPayload = {
+                                                        input: {
+                                                            tickets_id: ticketId,
+                                                            users_id: assignment.users_id,
+                                                            type: 3 // Observateur
+                                                        }
+                                                    };
+                                                    await axios.post(`${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/`, observerPayload, { headers });
+                                                    console.log(`Utilisateur ${assignment.users_id} mis en observateur`);
+                                                } catch (deleteError) {
+                                                    console.error(`Erreur lors de la suppression de l'assignation:`, deleteError.message);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Supprimer toutes les assignations de groupe de type 2
+                                    const ticketGroupsUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/Group_Ticket`;
+                                    try {
+                                        const existingGroupAssignments = await axios.get(ticketGroupsUrl, { headers });
+
+                                        if (existingGroupAssignments.data && Array.isArray(existingGroupAssignments.data)) {
+                                            for (const groupAssignment of existingGroupAssignments.data) {
+                                                if (groupAssignment.type === 2) {
+                                                    try {
+                                                        const deleteGroupUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Group_Ticket/`;
+                                                        await axios.delete(deleteGroupUrl, {
+                                                            headers,
+                                                            data: { input: { id: groupAssignment.id }, force_purge: true }
+                                                        });
+                                                        console.log(`Assignation de groupe ${groupAssignment.groups_id} supprimée`);
+                                                    } catch (deleteGroupError) {
+                                                        console.error(`Erreur lors de la suppression de l'assignation de groupe:`, deleteGroupError.message);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (groupError) {
+                                        console.error(`Erreur lors de la récupération des groupes assignés:`, groupError.message);
+                                    }
+
+                                    // Vérifier si l'utilisateur qui a validé est déjà assigné
+                                    const isAlreadyAssigned = existingAssignments.data && Array.isArray(existingAssignments.data) ?
+                                        existingAssignments.data.some(a => a.users_id == approvalUserId && a.type === 2) : false;
+
+                                    if (!isAlreadyAssigned) {
+                                        // Assigner l'utilisateur qui a validé
+                                        const assignPayload = {
+                                            input: {
+                                                tickets_id: ticketId,
+                                                users_id: approvalUserId,
+                                                type: 2 // Assigné
+                                            }
+                                        };
+
+                                        const assignUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/`;
+                                        await axios.post(assignUrl, assignPayload, { headers });
+                                        console.log(`Utilisateur ${approvalUserId} assigné au ticket ${ticketId} avec succès`);
+
+                                        //Mettre à jour le ticket lui-même pour s'assurer que users_id_assign est correct
+                                        const updateTicketUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}`;
+                                        const updateTicketPayload = {
+                                            input: {
+                                                users_id_assign: approvalUserId
+                                            }
+                                        };
+                                        await axios.put(updateTicketUrl, updateTicketPayload, { headers });
+                                        console.log(`Champ users_id_assign du ticket mis à jour avec l'utilisateur ${approvalUserId}`);
+                                    } else {
+                                        console.log(`Utilisateur ${approvalUserId} déjà assigné au ticket`);
+                                    }
+                                } catch (assignError) {
+                                    console.error(`Erreur lors de l'assignation de l'utilisateur ${approvalUserId}:`, assignError.message);
+                                }
+
+                                // Attendre que le global_validation devienne 3 pour confirmer
+                                context.item.data.ticketValidated = true;
+                                context.item.data.ticket_closed = false;
+                                return { validated: true, ticket_closed: false, assignedTo: approvalUserId };
                             } else if (globalValidationStatus === 3) {
                                 context.item.data.ticketValidated = true;
                                 context.item.data.ticket_closed = false;
@@ -628,19 +788,69 @@ class AppServices {
 
             // Ajouter une validation si nécessaire
             if (input.ticketValidation) {
-                try {
-                    const validationUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/TicketValidation/`;
-                    const validationPayload = {
-                        ...input.ticketValidation,
-                        input: {
-                            ...input.ticketValidation.input,
-                            tickets_id: ticketId
-                        }
-                    };
+                const validationUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/TicketValidation/`;
+                const validationInput = input.ticketValidation.input;
 
-                    await axios.post(validationUrl, validationPayload, { headers });
-                } catch (validationError) {
-                    console.error("Erreur lors de l'ajout de validation");
+                // Si un groupe est assigné au ticket ET qu'aucun utilisateur individuel n'est assigné,
+                // récupérer tous les membres et créer une validation pour chacun
+                if (currentGroupId && !currentUserId) {
+                    console.log(`Groupe assigné: ${currentGroupId}. Récupération des membres pour validation...`);
+
+                    // Récupération des membres du groupe via l'API GLPI
+                    let groupMembers = [];
+                    try {
+                        const groupUsersUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Group/${currentGroupId}/Group_User/`;
+                        const groupResponse = await axios.get(groupUsersUrl, { headers });
+
+                        if (groupResponse.status === 200 && groupResponse.data) {
+                            groupMembers = groupResponse.data
+                                .filter(item => item.users_id)
+                                .map(item => item.users_id);
+                            console.log(`Membres du groupe ${currentGroupId}:`, groupMembers);
+                        }
+                    } catch (groupError) {
+                        console.error(`Erreur lors de la récupération des membres du groupe:`, groupError.message);
+                    }
+
+                    if (groupMembers.length > 0) {
+                        console.log(`Création de ${groupMembers.length} demandes de validation pour les membres du groupe`);
+
+                        // Créer une demande de validation pour chaque membre du groupe
+                        for (const userId of groupMembers) {
+                            const validationPayload = {
+                                input: {
+                                    tickets_id: ticketId,
+                                    users_id_validate: userId,
+                                    comment_submission: validationInput.comment_submission || "Validation requise par le groupe",
+                                    validation_status: 2
+                                }
+                            };
+
+                            try {
+                                const validationResponse = await axios.post(validationUrl, validationPayload, { headers });
+                                console.log(`Validation créée pour l'utilisateur ${userId}, ID: ${validationResponse.data.id}`);
+                            } catch (validationError) {
+                                console.error(`Erreur lors de la création de la validation pour l'utilisateur ${userId}:`, validationError.message);
+                            }
+                        }
+                    } else {
+                        console.log("Aucun membre trouvé dans le groupe, pas de validation créée");
+                    }
+                } else {
+                    // Comportement classique: validation par utilisateur
+                    try {
+                        const validationPayload = {
+                            ...input.ticketValidation,
+                            input: {
+                                ...validationInput,
+                                tickets_id: ticketId
+                            }
+                        };
+
+                        await axios.post(validationUrl, validationPayload, { headers });
+                    } catch (validationError) {
+                        console.error("Erreur lors de l'ajout de validation");
+                    }
                 }
             }
 
@@ -888,6 +1098,40 @@ class AppServices {
             console.log("Fin de la récupération du nom d'utilisateur");
         }
     }
+
+    async getGroupMembers(groupId: number, sessionToken: string, appToken: string): Promise<number[]> {
+        try {
+            const headers = {
+                "Content-Type": "application/json",
+                "Session-Token": sessionToken,
+                "App-Token": appToken,
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache"
+            };
+
+            const groupUsersUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Group/${groupId}/Group_User/`;
+            console.log(`Récupération des membres du groupe ${groupId}`);
+
+            const response = await axios.get(groupUsersUrl, { headers });
+
+            if (response.status === 200 && response.data) {
+                // Extraire les IDs des utilisateurs du groupe
+                const userIds = response.data
+                    .filter(item => item.users_id)
+                    .map(item => item.users_id);
+
+                console.log(`Membres du groupe ${groupId}:`, userIds);
+                return userIds;
+            } else {
+                console.log(`Aucun membre trouvé pour le groupe ${groupId}`);
+                return [];
+            }
+        } catch (error) {
+            console.error(`Erreur lors de la récupération des membres du groupe ${groupId}:`, error.message);
+            return [];
+        }
+    }
+
     async logFormFields(input, context) {
         console.log("--------------- DEBUG LOG FORM FIELDS ---------------");
         if (context.item && context.item.data) {
