@@ -90,6 +90,11 @@ class AppServices {
                         status: 1,
                         entities_id: 0,
                         itilcategories_id: ticketContent.itilcategories_id || null,
+                        type: ticketContent.type || null,
+                        location_id: ticketContent.location_id || null,
+                        urgency: ticketContent.urgency || null,
+                        impact: ticketContent.impact || null,
+                        priority: ticketContent.priority || null,                        
                     },
                 };
 
