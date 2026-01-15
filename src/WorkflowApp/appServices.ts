@@ -106,6 +106,30 @@ class AppServices {
 
                     context.item.data.ticketId = createdTicketId;
 
+                    // Supprimer l'utilisateur API des assignations si un groupe est assigné
+                    if (ticketContent.groups_id_assign) {
+                        try {
+                            const ticketUsersUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${createdTicketId}/Ticket_User`;
+                            const existingAssignments = await axios.get(ticketUsersUrl, { headers });
+
+                            if (existingAssignments.data && Array.isArray(existingAssignments.data)) {
+                                for (const assignment of existingAssignments.data) {
+                                    // Supprimer les assignations de type 2 (assigné) sauf si explicitement demandé
+                                    if (assignment.type === 2 && !ticketContent.users_id_assign) {
+                                        const deleteUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket_User/`;
+                                        await axios.delete(deleteUrl, {
+                                            headers,
+                                            data: { input: { id: assignment.id }, force_purge: true }
+                                        });
+                                        console.log(`Assignation utilisateur ${assignment.users_id} supprimée (groupe assigné)`);
+                                    }
+                                }
+                            }
+                        } catch (cleanupError) {
+                            console.error("Erreur lors du nettoyage des assignations:", cleanupError.message);
+                        }
+                    }
+
                     // Gestion de l'assignation si nécessaire
                     if (ticketContent.users_id_assign && ticketResponse.data.users_id_assign != ticketContent.users_id_assign) {
                         const assignUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${createdTicketId}/Ticket_User`;
