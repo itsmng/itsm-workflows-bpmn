@@ -87,6 +87,8 @@ class AppServices {
                         groups_id_assign: ticketContent.groups_id_assign || null,
                         _users_id_requester: ticketContent.users_id_requester || null,
                         users_id_requester: ticketContent.users_id_requester || null,
+                        users_id_observer: ticketContent.users_id_observer || null,
+                        _users_id_observer: ticketContent.users_id_observer || null,
                         status: 1,
                         entities_id: 0,
                         itilcategories_id: ticketContent.itilcategories_id || null,
