@@ -76,11 +76,39 @@ class AppServices {
                     await axios.post(changeProfileUrl, { profiles_id: 4 }, { headers });
                 }
 
+                // Traitement du placeholder ##fullform## si présent
+                let processedDescription = ticketContent.description;
+                const descriptionStr = String(ticketContent.description || '').toLowerCase();
+
+                if (descriptionStr.includes('fullform') && ticketContent.formId) {
+                    console.log(`Détection de ##fullform## avec formId=${ticketContent.formId}, génération du contenu formaté...`);
+                    try {
+                        const metadata = await AppServices.fetchFormCreatorMetadata(
+                            ticketContent.formId,
+                            sessionToken,
+                            appToken
+                        );
+                        const formattedContent = await AppServices.generateFormattedHtmlContent(
+                            context.item.data,
+                            metadata,
+                            sessionToken,
+                            appToken
+                        );
+                        if (formattedContent) {
+                            // Remplacer le placeholder (tolère 1 ou 2 # de chaque côté à cause du parsing XML)
+                            processedDescription = ticketContent.description.replace(/#{1,2}fullform#{1,2}/gi, formattedContent);
+                            console.log("Contenu du formulaire généré avec succès");
+                        }
+                    } catch (formError) {
+                        console.error("Erreur lors de la génération du contenu formulaire:", formError.message);
+                    }
+                }
+
                 // Création du payload pour le ticket
                 const payload = {
                     input: {
                         name: ticketContent.title,
-                        content: ticketContent.description,
+                        content: processedDescription,
                         users_id_assign: ticketContent.users_id_assign || null,
                         _users_id_assign: ticketContent.users_id_assign || null,
                         _groups_id_assign: ticketContent.groups_id_assign || null,
@@ -1187,6 +1215,163 @@ class AppServices {
         }
         console.log("-----------------------------------------------------");
         return { logged: true };
+    }
+
+    /**
+     * Récupère les métadonnées des questions FormCreator depuis l'API GLPI.
+     */
+    static async fetchFormCreatorMetadata(formId: number, sessionToken: string, appToken: string): Promise<{
+        questions: Record<string, { name: string; sectionId: number; sectionName: string; order: number; fieldtype: string; itemtype: string }>;
+        sections: Record<number, { name: string; order: number }>;
+    }> {
+        const baseUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php`;
+        const headers = {
+            "Content-Type": "application/json",
+            "Session-Token": sessionToken,
+            "App-Token": appToken,
+        };
+
+        const result = {
+            questions: {} as Record<string, { name: string; sectionId: number; sectionName: string; order: number; fieldtype: string; itemtype: string }>,
+            sections: {} as Record<number, { name: string; order: number }>
+        };
+
+        try {
+            const sectionsResponse = await axios.get(`${baseUrl}/PluginFormcreatorSection?range=0-200`, { headers });
+            const allSections = sectionsResponse.data || [];
+            const formSections = allSections.filter((s: any) => s.plugin_formcreator_forms_id === formId);
+            for (const section of formSections) {
+                result.sections[section.id] = { name: section.name, order: section.order || 0 };
+            }
+
+            const questionsResponse = await axios.get(`${baseUrl}/PluginFormcreatorQuestion?range=0-500`, { headers });
+            const allQuestions = questionsResponse.data || [];
+            const sectionIds = Object.keys(result.sections).map(Number);
+            for (const question of allQuestions) {
+                if (sectionIds.includes(question.plugin_formcreator_sections_id)) {
+                    // Extraire l'itemtype depuis le champ values (JSON string) pour les dropdowns
+                    let itemtype = question.itemtype || '';
+                    if (!itemtype && question.values) {
+                        try {
+                            const parsedValues = JSON.parse(question.values);
+                            if (parsedValues && parsedValues.itemtype) {
+                                itemtype = parsedValues.itemtype;
+                            }
+                        } catch (e) {
+                            // values n'est pas un JSON valide (ex: tableau de valeurs radio)
+                        }
+                    }
+
+                    result.questions[question.id.toString()] = {
+                        name: question.name,
+                        sectionId: question.plugin_formcreator_sections_id,
+                        sectionName: result.sections[question.plugin_formcreator_sections_id]?.name || '',
+                        order: question.row || 0,
+                        fieldtype: question.fieldtype || '',
+                        itemtype: itemtype
+                    };
+                }
+            }
+            console.log(`FormCreator metadata: ${Object.keys(result.questions).length} questions, ${Object.keys(result.sections).length} sections`);
+        } catch (error) {
+            console.error("Erreur lors de la récupération des métadonnées FormCreator:", error.message);
+        }
+
+        return result;
+    }
+
+    /**
+     * Résout un ID en nom lisible via l'API GLPI.
+     */
+    static async resolveGlpiItemName(itemtype: string, itemId: number, sessionToken: string, appToken: string): Promise<string> {
+        if (!itemtype || !itemId || itemId === 0) return String(itemId);
+
+        const baseUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php`;
+        const headers = {
+            "Content-Type": "application/json",
+            "Session-Token": sessionToken,
+            "App-Token": appToken,
+        };
+
+        try {
+            const response = await axios.get(`${baseUrl}/${itemtype}/${itemId}`, { headers });
+            if (response.status === 200 && response.data) {
+                const item = response.data;
+                // Selon le type d'objet, retourner le champ approprié
+                if (itemtype === 'User') {
+                    return `${item.firstname || ''} ${item.realname || ''}`.trim() || item.name || String(itemId);
+                }
+                return item.name || item.completename || String(itemId);
+            }
+        } catch (error) {
+            console.error(`Erreur lors de la résolution de ${itemtype}/${itemId}:`, error.message);
+        }
+        return String(itemId);
+    }
+
+    /**
+     * Génère le contenu HTML formaté du formulaire avec sections et labels.
+     * Résout les IDs des dropdowns en noms lisibles.
+     */
+    static async generateFormattedHtmlContent(
+        data: any,
+        metadata: {
+            questions: Record<string, { name: string; sectionId: number; sectionName: string; order: number; fieldtype: string; itemtype: string }>;
+            sections: Record<number, { name: string; order: number }>;
+        },
+        sessionToken: string,
+        appToken: string
+    ): Promise<string> {
+        if (!data || !metadata) return '';
+
+        const htmlParts: string[] = [];
+        const sortedSections = Object.entries(metadata.sections).sort(([, a], [, b]) => a.order - b.order);
+
+        // Types de champs qui référencent des objets GLPI
+        const dropdownFieldTypes = ['dropdown', 'glpiselect', 'dropdownfield'];
+
+        for (const [sectionId, section] of sortedSections) {
+            const sectionIdNum = parseInt(sectionId);
+            const sectionQuestions = Object.entries(metadata.questions)
+                .filter(([, q]) => q.sectionId === sectionIdNum)
+                .sort(([, a], [, b]) => a.order - b.order);
+
+            if (sectionQuestions.length === 0) continue;
+
+            const hasValues = sectionQuestions.some(([qId]) => {
+                const value = data[`formcreator_field_${qId}`];
+                return value !== undefined && value !== null && value !== '';
+            });
+
+            if (!hasValues) continue;
+
+            htmlParts.push(`<h3><b>${section.name}</b></h3>`);
+
+            for (const [questionId, question] of sectionQuestions) {
+                const value = data[`formcreator_field_${questionId}`];
+                if (value === undefined || value === null || value === '') continue;
+
+                let formattedValue: string;
+
+                // Si c'est un dropdown avec un itemtype, résoudre l'ID en nom
+                if (dropdownFieldTypes.includes(question.fieldtype) && question.itemtype && !isNaN(Number(value))) {
+                    formattedValue = await AppServices.resolveGlpiItemName(
+                        question.itemtype,
+                        Number(value),
+                        sessionToken,
+                        appToken
+                    );
+                } else if (Array.isArray(value)) {
+                    formattedValue = value.join(', ');
+                } else {
+                    formattedValue = String(value);
+                }
+
+                htmlParts.push(`<p><b>${question.name}</b> : ${formattedValue}</p>`);
+            }
+        }
+
+        return htmlParts.join('\n');
     }
 }
 export { AppServices }
