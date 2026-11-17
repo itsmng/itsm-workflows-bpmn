@@ -665,11 +665,13 @@ class AppServices {
                         content: taskContent,
                         is_private: input.taskData && input.taskData.is_private !== undefined ?
                             input.taskData.is_private ? 1 : 0 : 0,
-                        // Sans users_id_tech : 2 (comportement historique), ou 0 si la tâche est confiée à un groupe
-                        users_id_tech: input.taskData && input.taskData.users_id_tech !== undefined ?
-                            input.taskData.users_id_tech :
-                            (input.taskData && input.taskData.groups_id_tech ? 0 : 2),
-                        ...(input.taskData && input.taskData.groups_id_tech && { groups_id_tech: input.taskData.groups_id_tech }),
+                        users_id_tech: input.taskData && input.taskData.users_id_tech ?
+                            input.taskData.users_id_tech : 2,
+                        // Tâche confiée à un groupe : groups_id_tech, sans utilisateur par défaut
+                        ...(input.taskData && input.taskData.groups_id_tech && {
+                            groups_id_tech: input.taskData.groups_id_tech,
+                            ...(!input.taskData.users_id_tech && { users_id_tech: 0 })
+                        }),
                         state: 1
                     }
                 };
