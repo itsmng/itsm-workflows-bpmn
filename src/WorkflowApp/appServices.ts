@@ -331,15 +331,13 @@ class AppServices {
                 console.error("Erreur lors du changement de profil");
             }
 
-            let attempts = 0;
             const interval = 5000;
-            const maxAttempts = 10000;
 
             if (!context.item.data.seenValidations) {
                 context.item.data.seenValidations = [];
             }
 
-            while (attempts < maxAttempts) {
+            while (true) {
                 try {
                     const ticketResponse = await axios.get(ticketApiUrl, { headers });
                     const validationsResponse = await axios.get(ticketValidationsUrl, { headers });
@@ -443,8 +441,7 @@ class AppServices {
                     console.error("Erreur lors de la requête");
                 }
 
-                attempts++;
-                if (attempts < maxAttempts) await new Promise(resolve => setTimeout(resolve, interval));
+                await new Promise(resolve => setTimeout(resolve, interval));
             }
 
             context.item.data.ticketValidated = false;

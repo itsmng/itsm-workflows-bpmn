@@ -2,6 +2,7 @@ import {  Item, FLOW_ACTION , NODE_ACTION, IExecution  } from './';
 import { DefaultAppDelegate } from './';
 import { AppServices } from './appServices';
 import { AppUtils } from './appUtils';
+import { recoverPollingTasks } from './pollingRecovery';
 
 const Mailer = require('../userAccess/config/mail');
 
@@ -18,6 +19,8 @@ class MyAppDelegate extends DefaultAppDelegate{
     winSocket;
     appServices;
     appUtils;
+    private readonly startedAt = new Date();
+    private pollingRecoveryStarted = false;
     
     constructor(server) {
         super(server);
@@ -57,21 +60,17 @@ class MyAppDelegate extends DefaultAppDelegate{
     * is fired on application startup
     **/
     async startUp(options) {
-
         await super.startUp(options);
-		if (options['cron'] == false) {
-			return;
-		}
-
-        console.log('myserver started');
-
-        var query = { "items.status": "start" };
-
-        var list = await this.server.dataStore.findItems(query);
-        if (list.length > 0) {
-            this.server.logger.log("** There are " + list.length," items that seems to be hung");
+        if (options['cron'] === false || this.pollingRecoveryStarted) {
+            return;
         }
-
+        this.pollingRecoveryStarted = true;
+        console.log('myserver started');
+        try {
+            await recoverPollingTasks(this.server, this.startedAt);
+        } catch (error) {
+            console.error('Could not scan interrupted tasks for polling recovery:', error);
+        }
     }
     /**
      * sends emails is called by Notification class

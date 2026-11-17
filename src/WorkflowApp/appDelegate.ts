@@ -1,7 +1,8 @@
-import {  Item, FLOW_ACTION , NODE_ACTION, IExecution , dateDiff } from './';
+import {  Item, FLOW_ACTION , NODE_ACTION, IExecution } from './';
 import { DefaultAppDelegate } from './';
 import { AppServices } from './appServices';
 import { AppUtils } from './appUtils';
+import { recoverPollingTasks } from './pollingRecovery';
 
 const Mailer = require('../userAccess/config/mail');
 
@@ -20,6 +21,8 @@ class MyAppDelegate extends DefaultAppDelegate{
     winSocket;
     appServices;
     appUtils;
+    private readonly startedAt = new Date();
+    private pollingRecoveryStarted = false;
     
     constructor(server) {
         super(server);
@@ -59,41 +62,17 @@ class MyAppDelegate extends DefaultAppDelegate{
     * is fired on application startup
     **/
     async startUp(options) {
-
         await super.startUp(options);
-		if (options['cron'] == false) {
-			return;
-		}
-
+        if (options['cron'] === false || this.pollingRecoveryStarted) {
+            return;
+        }
+        this.pollingRecoveryStarted = true;
         console.log('myserver started');
-
-        var query = { "items.status": "start" };
-
-        var list = await this.server.dataStore.findItems(query);
-        if (list.length > 0) {
-            this.server.logger.log("** There are " + list.length," items that seems to be hung");
-            console.log("** There are " + list.length," items that seems to be hung");
-            list.forEach(it=>{
-                console.log(`   item hung: '${it.elementId}' seq: ${it.seq} ${it.type} ${it.status} in process:'${it.processName}' - Instance id: '${it.instanceId}' `);
-            });
+        try {
+            await recoverPollingTasks(this.server, this.startedAt);
+        } catch (error) {
+            console.error('Could not scan interrupted tasks for polling recovery:', error);
         }
-
-        var list = await this.server.dataStore.locker.list();
-
-        let date=new Date();
-        date.setDate(date.getDate() -1);
-
-        var list = await this.server.dataStore.locker.delete({ time: { $lte: date } });
-
-        if (list.length > 0) {
-            console.log('Current locks ...', list.length);
-            for (var i = 0; i < list.length; i++) {
-                let item = list[i];
-                console.log('lock:', item.id, item.server, item.time,dateDiff(item.time));
-            }
-        }
-    
-
     }
     /**
      * sends emails is called by Notification class
