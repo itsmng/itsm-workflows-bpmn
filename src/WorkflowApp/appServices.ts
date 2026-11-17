@@ -667,6 +667,11 @@ class AppServices {
                             input.taskData.is_private ? 1 : 0 : 0,
                         users_id_tech: input.taskData && input.taskData.users_id_tech ?
                             input.taskData.users_id_tech : 2,
+                        // Tâche confiée à un groupe : groups_id_tech, sans utilisateur par défaut
+                        ...(input.taskData && input.taskData.groups_id_tech && {
+                            groups_id_tech: input.taskData.groups_id_tech,
+                            ...(!input.taskData.users_id_tech && { users_id_tech: 0 })
+                        }),
                         state: 1
                     }
                 };
@@ -675,6 +680,8 @@ class AppServices {
 
                 if (taskResponse.status === 201) {
                     console.log("Tâche ajoutée avec succès, ID:", taskResponse.data.id);
+                    // Permet à pollTaskCompletion de retrouver la dernière tâche créée
+                    context.item.data.lastTaskId = taskResponse.data.id;
                     return { success: true, taskId: taskResponse.data.id };
                 } else {
                     return { error: "Échec d'ajout de tâche", details: taskResponse.data };
@@ -688,6 +695,157 @@ class AppServices {
         } finally {
             console.log("Fin de la tâche d'ajout de tâche");
         }
+    }
+
+    /**
+     * Ouvre une session API ITSM-NG et retourne les en-têtes à utiliser pour les appels suivants.
+     * Si la variable d'environnement ITSM_PROFILE_ID est définie, le profil actif est changé
+     * (étape optionnelle et non bloquante). Lève une erreur si la session ne peut pas être ouverte.
+     */
+    async getApiHeaders(): Promise<any> {
+        const base = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php`;
+        const appToken = process.env.ITSM_APP_TOKEN;
+
+        const sessionResponse = await axios.get(`${base}/initSession`, {
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "user_token " + process.env.ITSM_USER_TOKEN,
+                "App-Token": appToken,
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache"
+            },
+        });
+
+        if (sessionResponse.status !== 200 || !sessionResponse.data || !sessionResponse.data.session_token) {
+            throw new Error("Échec de récupération du token de session");
+        }
+
+        const headers = {
+            "Content-Type": "application/json",
+            "Session-Token": sessionResponse.data.session_token,
+            "App-Token": appToken,
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache"
+        };
+
+        if (process.env.ITSM_PROFILE_ID) {
+            try {
+                const profileResponse = await axios.get(`${base}/getActiveProfile/`, { headers });
+                if (String(profileResponse.data.id) !== String(process.env.ITSM_PROFILE_ID)) {
+                    await axios.post(`${base}/changeActiveProfile/`,
+                        { profiles_id: Number(process.env.ITSM_PROFILE_ID) }, { headers });
+                }
+            } catch (profileError) {
+                console.error("Changement de profil ignoré:", profileError.message);
+            }
+        }
+
+        return headers;
+    }
+
+    /**
+     * Attend qu'un technicien soit assigné au ticket.
+     * Paramètres optionnels : interval (ms, 10000 par défaut), maxAttempts (10000 par défaut),
+     * storeAs (nom de la donnée où stocker l'id du technicien, "assignedTechId" par défaut).
+     */
+    async pollAssignment(input, context) {
+        const ticketId = context.item.data.ticketId;
+
+        if (!ticketId) {
+            return { error: "ID de ticket manquant" };
+        }
+
+        const ticketUsersUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/Ticket/${ticketId}/Ticket_User`;
+        const interval = (input && input.interval) || 10000;
+        const maxAttempts = (input && input.maxAttempts) || 10000;
+        const storeAs = (input && input.storeAs) || "assignedTechId";
+
+        let headers;
+        try {
+            headers = await this.getApiHeaders();
+        } catch (error) {
+            return { error: "Erreur initSession: " + error.message };
+        }
+
+        for (let attempts = 0; attempts < maxAttempts; attempts++) {
+            try {
+                const usersResponse = await axios.get(ticketUsersUrl, { headers });
+
+                if (usersResponse.status === 200 && Array.isArray(usersResponse.data)) {
+                    const assignedTech = usersResponse.data.find(a => a.type === 2);
+
+                    if (assignedTech) {
+                        console.log("Tech assigné trouvé:", assignedTech.users_id);
+                        context.item.data[storeAs] = assignedTech.users_id;
+                        return { success: true, assignedTechId: assignedTech.users_id };
+                    }
+                }
+            } catch (error) {
+                if (error.response && error.response.status === 401) {
+                    console.log("Session expirée, renouvellement...");
+                    try {
+                        headers = await this.getApiHeaders();
+                    } catch (renewError) {
+                        console.error("Erreur renouvellement session:", renewError.message);
+                    }
+                } else {
+                    console.error("Erreur pollAssignment:", error.message);
+                }
+            }
+
+            await new Promise(resolve => setTimeout(resolve, interval));
+        }
+
+        return { error: "Timeout: aucun tech assigné", success: false };
+    }
+
+    /**
+     * Attend qu'une tâche du ticket soit terminée (state = 2).
+     * Paramètres optionnels : taskId (par défaut la dernière tâche créée par addTask),
+     * interval (ms, 10000 par défaut), maxAttempts (10000 par défaut).
+     */
+    async pollTaskCompletion(input, context) {
+        const taskId = (input && input.taskId) || context.item.data.lastTaskId;
+
+        if (!taskId) {
+            return { error: "ID de tâche manquant" };
+        }
+
+        const taskUrl = `${process.env.ITSM_HOST}${process.env.ITSM_URI}/apirest.php/TicketTask/${taskId}`;
+        const interval = (input && input.interval) || 10000;
+        const maxAttempts = (input && input.maxAttempts) || 10000;
+
+        let headers;
+        try {
+            headers = await this.getApiHeaders();
+        } catch (error) {
+            return { error: "Erreur initSession: " + error.message };
+        }
+
+        for (let attempts = 0; attempts < maxAttempts; attempts++) {
+            try {
+                const taskResponse = await axios.get(taskUrl, { headers });
+
+                if (taskResponse.status === 200 && taskResponse.data && taskResponse.data.state === 2) {
+                    console.log(`Tâche ${taskId} terminée`);
+                    return { success: true, taskId, completed: true };
+                }
+            } catch (error) {
+                if (error.response && error.response.status === 401) {
+                    try {
+                        headers = await this.getApiHeaders();
+                    } catch (renewError) {
+                        console.error("Erreur renouvellement session:", renewError.message);
+                    }
+                } else {
+                    console.error("Erreur pollTaskCompletion:", error.message);
+                }
+            }
+
+            await new Promise(resolve => setTimeout(resolve, interval));
+        }
+
+        return { error: "Timeout: tâche non terminée", success: false };
     }
 
     async updateTicket(input, context) {
@@ -1370,5 +1528,6 @@ class AppServices {
 
         return htmlParts.join('\n');
     }
+
 }
 export { AppServices }
